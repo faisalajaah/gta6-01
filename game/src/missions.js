@@ -1,13 +1,16 @@
 // Missions and the story of Solmar: Marco Solano, a getaway driver back in town, takes jobs
 // from Lena Cruz, a fixer who pays in cash. Each mission is steps with a target on the map;
-// finishing one pays out and starts the next, and finishing all four makes Marco king of Solmar.
-import { MISSIONS } from './config.js';
+// finishing one pays out and starts the next, and finishing all six makes Marco king of Solmar.
+import { GARAGE, HOTEL, MARINA, MISSIONS } from './config.js';
 import { distance } from './geometry.js';
 import { addWanted } from './police.js';
 
-const GARAGE = { x: 600, y: 2200 };
 const EAST_PLAZA = { x: 2600, y: 600 };
-const MARINA = { x: 3000, y: 2200 };
+const TOWER_CHECKPOINTS = [
+  { x: 1400, y: 600 },
+  { x: 2600, y: 1000 },
+  { x: 1800, y: 1400 },
+];
 const REACH_DISTANCE = 70;
 
 /** A short message at the top of the screen for a few seconds. */
@@ -31,6 +34,12 @@ export function missionText(state) {
   if (mission.index === 2) return `Shake the heat — survive ${Math.ceil(mission.timer)}s`;
   if (mission.index === 3) {
     return mission.step === 0 ? 'Pick up the cash at the Marina' : 'Bring the cash back to the garage — the cops are on you';
+  }
+  if (mission.index === 4) {
+    return mission.step === 0 ? 'Break into the Palms Hotel — grab the stash' : 'Escape to the garage — the cops are on you';
+  }
+  if (mission.index === 5) {
+    return `Tower Run — checkpoint ${mission.step + 1} of 3 · ${Math.ceil(mission.timer)}s left`;
   }
   return def.title;
 }
@@ -57,6 +66,14 @@ export function startMission(state, index) {
   } else if (index === 3) {
     mission.target = MARINA;
     addToast(state, 'Mission: The Marina Job — pick up the cash');
+  } else if (index === 4) {
+    mission.target = HOTEL;
+    addToast(state, 'Mission: Palms Heist — the hotel stash, no witnesses');
+  } else if (index === 5) {
+    mission.target = TOWER_CHECKPOINTS[0];
+    mission.timer = 75;
+    addWanted(state, 1);
+    addToast(state, 'Mission: Tower Run — three checkpoints, 75 seconds');
   }
 }
 
@@ -141,6 +158,32 @@ export function updateMission(state, dt) {
     } else if (mission.step === 1 && distance(player.x, player.y, GARAGE.x, GARAGE.y) < REACH_DISTANCE) {
       return completeMission(state);
     }
+    return 0;
+  }
+  if (mission.index === 4) {
+    if (mission.step === 0 && distance(player.x, player.y, HOTEL.x, HOTEL.y) < REACH_DISTANCE) {
+      mission.step = 1;
+      mission.target = GARAGE;
+      addWanted(state, 2);
+      addToast(state, 'Stash grabbed — two stars, lose them at the garage');
+    } else if (mission.step === 1 && distance(player.x, player.y, GARAGE.x, GARAGE.y) < REACH_DISTANCE) {
+      return completeMission(state);
+    }
+    return 0;
+  }
+  if (mission.index === 5) {
+    mission.timer -= dt;
+    const target = TOWER_CHECKPOINTS[mission.step];
+    if (target && distance(player.x, player.y, target.x, target.y) < REACH_DISTANCE) {
+      mission.step += 1;
+      if (mission.step >= TOWER_CHECKPOINTS.length) {
+        addToast(state, 'All checkpoints hit — the Tower is yours');
+        return completeMission(state);
+      }
+      mission.target = TOWER_CHECKPOINTS[mission.step];
+      addToast(state, `Checkpoint ${mission.step} — next one up`);
+    }
+    if (mission.timer <= 0) return failMission(state, 'Out of time — the Tower Run restarts');
     return 0;
   }
   return 0;

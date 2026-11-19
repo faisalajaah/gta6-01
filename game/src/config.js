@@ -81,7 +81,27 @@ export const MISSIONS = [
   { id: 'sunset-courier', title: 'Sunset Courier', reward: 350 },
   { id: 'shake-the-heat', title: 'Shake the Heat', reward: 500 },
   { id: 'marina-job', title: 'The Marina Job', reward: 800 },
+  { id: 'palms-heist', title: 'Palms Heist', reward: 1000 },
+  { id: 'tower-run', title: 'Tower Run', reward: 1200 },
 ];
+
+/** Landmark spots the missions and the garage use. */
+export const GARAGE = { x: 600, y: 2200 };
+export const HOTEL = { x: 2800, y: 2000 };
+export const TOWER = { x: 1200, y: 800 };
+export const MARINA = { x: 3000, y: 2200 };
+
+/** The taxi side job: a fare pays a base amount plus a per-metre rate and a time bonus. */
+export const TAXI = {
+  baseFare: 60,
+  perMetre: 0.25,
+  timeBonus: 40,
+  secondsPerMetre: 0.09,
+  minTime: 25,
+};
+
+/** What the garage sells: a repair and a faster car, both paid in cash. */
+export const SHOP = { repairCost: 150, sportCost: 800, sportSpeed: 1.35, sportAccel: 1.3 };
 
 /** Where the save is kept between visits (this browser only). */
 export const SAVE_KEY = 'solmar.save.v1';

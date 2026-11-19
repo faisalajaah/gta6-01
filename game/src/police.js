@@ -32,12 +32,26 @@ function spawnPoliceCar(state) {
   }
 }
 
+/** A cruiser that has been far from the player for a long stretch gives up the chase. */
+const GIVE_UP_SECONDS = 25;
+const GIVE_UP_DISTANCE = 600;
+const CLOSE_DISTANCE = 300;
+
 /** One cruiser: steer toward the player, ram them, and arrest them on foot. */
 function updatePoliceCar(state, car, dt) {
   const player = state.player;
   const targetAngle = Math.atan2(player.y - car.y, player.x - car.x);
   steerCarTowards(car, targetAngle, dt, 3.2);
   const d = distance(player.x, player.y, car.x, car.y);
+  car.chaseTimer = (car.chaseTimer || 0) + (d > GIVE_UP_DISTANCE ? dt : 0);
+  if (d < CLOSE_DISTANCE) car.chaseTimer = 0;
+  if (car.chaseTimer > GIVE_UP_SECONDS) {
+    // Lost the player: go back to patrolling instead of chasing forever.
+    car.kind = 'traffic';
+    car.cruise = 140;
+    car.chaseTimer = 0;
+    return;
+  }
   const targetSpeed = d > 120 ? POLICE.chaseSpeed : POLICE.chaseSpeed * 0.75;
   car.speed += clamp(targetSpeed - car.speed, -500 * dt, 420 * dt);
   const dx = Math.cos(car.angle) * car.speed * dt;

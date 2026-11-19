@@ -2,16 +2,17 @@
 // player on foot and in cars, traffic, pedestrians, police, missions and the wanted level.
 // step() advances one fixed step and returns what happened as bit flags, so the caller can react
 // (sounds, announcements) without the world knowing about screens or sound.
-import { BLOCK_X, BLOCK_Y, CAR, PARK, PLAYER, ROADS_X, ROADS_Y, VIEW, WANTED, WORLD } from './config.js';
+import { BLOCK_X, BLOCK_Y, CAR, GARAGE, PARK, PLAYER, ROADS_X, ROADS_Y, SHOP, VIEW, WANTED, WORLD } from './config.js';
 import { pick } from './random.js';
 import { clamp, distance } from './geometry.js';
 import { addToast, updateMission } from './missions.js';
 import { addWanted, updatePolice } from './police.js';
 import { punch, shoot, updateBullets } from './combat.js';
-import { enterNearestCar, updatePlayerCar } from './vehicles.js';
+import { enterNearestCar, createCar, updatePlayerCar } from './vehicles.js';
 import { moveCircle } from './geometry.js';
 import { spawnPeds, spawnTraffic, updatePeds, updateTraffic } from './traffic.js';
-import { ACTION_ENTER, ACTION_PUNCH } from './input.js';
+import { ACTION_BUY, ACTION_ENTER, ACTION_PUNCH, ACTION_REPAIR } from './input.js';
+import { createTaxiState, fareNearby, spawnFare, startFare, updateTaxi } from './taxi.js';
 
 export const EVENT_PICKUP = 1;
 export const EVENT_CRIME = 2;
@@ -21,6 +22,7 @@ export const EVENT_SHOT = 16;
 export const EVENT_PUNCH = 32;
 export const EVENT_HIT = 64;
 export const EVENT_CRASH = 128;
+export const EVENT_FARE = 256;
 
 const BUILDING_COLORS = ['#d9a05b', '#e8836b', '#e0b56a', '#7fb8a8', '#f0e0b8', '#c97e5e', '#a8b8a0', '#d98ab0', '#9fb3c8', '#e8b4a0'];
 const ROOF_COLORS = ['#a08068', '#96705a', '#8a7f74', '#7a8a7a', '#b09078', '#8a6f8a'];
@@ -90,12 +92,15 @@ export function createWorld(random) {
     player: {
       x: 600, y: 1840, angle: -Math.PI / 2, health: PLAYER.health, cash: 0,
       onFoot: true, car: null, armed: false, ammo: 0, punchCd: 0, shootCd: 0, hurtCd: 0, speed: 0,
+      sportOwned: false,
     },
     cars: [],
     peds: [],
     bullets: [],
     particles: [],
     pickups: [],
+    taxi: createTaxiState(),
+    garageNear: false,
     wanted: 0,
     crimeTimer: 99,
     decayTimer: 0,
@@ -123,11 +128,14 @@ export function createWorld(random) {
     player.shootCd = 0;
     player.hurtCd = 0;
     player.speed = 0;
+    player.sportOwned = false;
     state.cars = [];
     state.peds = [];
     state.bullets = [];
     state.particles = [];
     state.pickups = [];
+    state.taxi = createTaxiState();
+    state.garageNear = false;
     state.wanted = 0;
     state.crimeTimer = 99;
     state.decayTimer = 0;
@@ -153,13 +161,66 @@ export function createWorld(random) {
         active: true,
       });
     }
+    // One pedestrian is already waving for a cab when the city opens.
+    spawnFare(state);
   }
 
-  /** Move the camera so the player stays centred, clamped inside the city. */
-  function followCamera() {
+  /** Move the camera toward the player, eased so fast driving never snaps the view. */
+  function followCamera(dt) {
     const player = state.player;
-    state.camera.x = clamp(player.x, VIEW.width / 2, WORLD.width - VIEW.width / 2);
-    state.camera.y = clamp(player.y, VIEW.height / 2, WORLD.height - VIEW.height / 2);
+    const targetX = clamp(player.x, VIEW.width / 2, WORLD.width - VIEW.width / 2);
+    const targetY = clamp(player.y, VIEW.height / 2, WORLD.height - VIEW.height / 2);
+    const ease = Math.min(1, dt * 6);
+    state.camera.x += (targetX - state.camera.x) * ease;
+    state.camera.y += (targetY - state.camera.y) * ease;
+  }
+
+  /** The garage shop: repair the car or buy the sport car, both paid in cash. */
+  function useGarage(state, actions) {
+    const player = state.player;
+    if (!state.garageNear || !player.onFoot) return 0;
+    if (actions & ACTION_REPAIR) {
+      let nearest = null;
+      let nearestD = 300;
+      for (const car of state.cars) {
+        if (car.kind !== 'parked' && car.kind !== 'player') continue;
+        const d = distance(player.x, player.y, car.x, car.y);
+        if (d < nearestD) {
+          nearestD = d;
+          nearest = car;
+        }
+      }
+      if (!nearest) {
+        addToast(state, 'No car nearby to repair — bring one to the garage');
+        return 0;
+      }
+      if (player.cash < SHOP.repairCost) {
+        addToast(state, `Repair costs $${SHOP.repairCost} — you have $${player.cash}`);
+        return 0;
+      }
+      player.cash -= SHOP.repairCost;
+      nearest.health = CAR.health;
+      addToast(state, `Garage repair — car fixed for $${SHOP.repairCost}`);
+      return 1;
+    }
+    if (actions & ACTION_BUY) {
+      if (player.sportOwned) {
+        addToast(state, 'You already own the sport car — it is parked by the garage');
+        return 0;
+      }
+      if (player.cash < SHOP.sportCost) {
+        addToast(state, `The sport car costs $${SHOP.sportCost} — you have $${player.cash}`);
+        return 0;
+      }
+      player.cash -= SHOP.sportCost;
+      player.sportOwned = true;
+      const sport = createCar(state, GARAGE.x + 90, GARAGE.y - 20, 0, 'parked', '#f2c94c');
+      sport.sport = true;
+      state.cars.push(sport);
+      addToast(state, 'Sport car bought — gold, parked by the garage, and fast');
+      return 1;
+    }
+    return 0;
   }
 
   function updatePlayerOnFoot(dt, controls, actions) {
@@ -178,7 +239,14 @@ export function createWorld(random) {
     if (player.punchCd > 0) player.punchCd -= dt;
     if (player.shootCd > 0) player.shootCd -= dt;
     if (player.hurtCd > 0) player.hurtCd -= dt;
+    // At the garage, R repairs a nearby car and B buys the sport car.
+    const shopEvent = useGarage(state, actions);
     if (actions & ACTION_ENTER) {
+      // A waving fare comes first: E picks them up, otherwise E takes a car.
+      if (fareNearby(state)) {
+        startFare(state);
+        return shopEvent ? EVENT_PICKUP : 0;
+      }
       const entered = enterNearestCar(state);
       return entered === 2 ? EVENT_CRIME : 0;
     }
@@ -193,7 +261,7 @@ export function createWorld(random) {
       addWanted(state, WANTED.shoot);
       return EVENT_SHOT | EVENT_CRIME;
     }
-    return 0;
+    return shopEvent ? EVENT_PICKUP : 0;
   }
 
   function updatePickups() {
@@ -266,9 +334,11 @@ export function createWorld(random) {
     events |= updatePolice(state, dt);
     events |= updateBullets(state, dt);
     events |= updatePickups();
+    events |= updateTaxi(state, dt) ? EVENT_FARE : 0;
+    state.garageNear = player.onFoot && distance(player.x, player.y, GARAGE.x, GARAGE.y) < 120;
     updateWanted(dt);
     updateParticles(dt);
-    followCamera();
+    followCamera(dt);
     if (player.health <= 0) {
       state.overReason = 'wasted';
       events |= EVENT_OVER;

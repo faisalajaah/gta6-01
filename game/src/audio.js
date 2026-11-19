@@ -1,5 +1,5 @@
 // All sound is synthesised with WebAudio: engine hum, police sirens, gunshots, punches,
-// pickups and a light music loop. No audio files, no network. Every call is a no-op until the
+// pickups, a taxi fare chime and a light music loop. No audio files, no network. Every call
 // player unlocks audio with a key or a click, and while the tab is hidden.
 const MUSIC_STEPS = [
   // A sunny two-bar loop: bass notes (Hz) with a bright pluck on top, one step each 0.22 s.
@@ -148,6 +148,11 @@ export function createAudio() {
     pickup() {
       tone(880, 0.09, 'sine', 0.16);
       window.setTimeout(() => tone(1318, 0.12, 'sine', 0.16), 80);
+    },
+    /** Bright two-note chime when a taxi fare is paid, distinct from a pickup. */
+    farePaid() {
+      tone(987, 0.1, 'triangle', 0.18);
+      window.setTimeout(() => tone(1318, 0.16, 'triangle', 0.18), 100);
     },
     missionDone() {
       [523, 659, 784, 1046].forEach((frequency, index) => {

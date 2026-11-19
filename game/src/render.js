@@ -2,7 +2,7 @@
 // scaled to fit the window and centred, the margin filled with the backdrop colour. The camera
 // follows the player through Solmar: roads and lane paint, pastel blocks with long afternoon
 // shadows, the park, the beach and the sea, then the cars, the people and the HUD.
-import { CAR, PALETTE, PARK, PLAYER, ROADS_X, ROADS_Y, ROAD_W, VIEW, WORLD } from './config.js';
+import { CAR, GARAGE, MISSIONS, PALETTE, PARK, PLAYER, ROADS_X, ROADS_Y, ROAD_W, VIEW, WORLD } from './config.js';
 import { createText, drawHud } from './hud.js';
 
 export const SCREEN_TITLE = 'title';
@@ -57,6 +57,48 @@ export function createRenderer(canvas) {
       context.arc(x, y, 12, 0, Math.PI * 2);
       context.fill();
     }
+    // Palm trees along the beachfront boardwalk, between the road and the sand.
+    for (let x = 120; x < WORLD.width; x += 200) {
+      const y = WORLD.beachY - 12;
+      context.strokeStyle = '#8a6f4d';
+      context.lineWidth = 5;
+      context.beginPath();
+      context.moveTo(x, y);
+      context.lineTo(x + 4, y - 26);
+      context.stroke();
+      context.fillStyle = '#3f8f3a';
+      context.beginPath();
+      context.arc(x + 4, y - 30, 13, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = '#5cb85c';
+      context.beginPath();
+      context.arc(x + 1, y - 33, 8, 0, Math.PI * 2);
+      context.fill();
+    }
+    // The marina: wooden docks reaching into the sea with boats moored alongside.
+    context.fillStyle = '#8a6f4d';
+    for (let index = 0; index < 3; index += 1) {
+      const dockX = 2720 + index * 170;
+      context.fillRect(dockX, WORLD.seaY - 30, 18, 130);
+    }
+    for (let index = 0; index < 3; index += 1) {
+      const boatX = 2690 + index * 170;
+      const boatY = WORLD.seaY + 42 + (index % 2) * 26;
+      context.fillStyle = ['#e8e2d4', '#f2c94c', '#4fc3f7'][index];
+      context.beginPath();
+      context.moveTo(boatX - 26, boatY);
+      context.lineTo(boatX + 26, boatY);
+      context.lineTo(boatX + 16, boatY + 14);
+      context.lineTo(boatX - 16, boatY + 14);
+      context.closePath();
+      context.fill();
+      context.strokeStyle = '#5d5348';
+      context.lineWidth = 3;
+      context.beginPath();
+      context.moveTo(boatX, boatY);
+      context.lineTo(boatX, boatY - 30);
+      context.stroke();
+    }
     // The park: darker grass and a path.
     context.fillStyle = '#6d9c4e';
     context.fillRect(PARK.x, PARK.y, PARK.w, PARK.h);
@@ -108,6 +150,17 @@ export function createRenderer(canvas) {
       context.fillStyle = 'rgba(0, 0, 0, 0.18)';
       context.fillRect(building.x + 18, building.y + 18, 26, 18);
       context.fillRect(building.x + building.w - 44, building.y + building.h - 36, 26, 18);
+      // Downtown towers (around Solmar Tower) read taller: lit window grids on the face.
+      const downtown = building.x + building.w / 2 > 900 && building.x + building.w / 2 < 1900
+        && building.y + building.h / 2 > 500 && building.y + building.h / 2 < 1100;
+      if (downtown) {
+        context.fillStyle = 'rgba(255, 240, 180, 0.75)';
+        for (let wx = building.x + 22; wx < building.x + building.w - 18; wx += 26) {
+          for (let wy = building.y + 22; wy < building.y + building.h - 18; wy += 26) {
+            context.fillRect(wx, wy, 10, 12);
+          }
+        }
+      }
       if (building.name) {
         text(building.name, building.x + building.w / 2, building.y + building.h / 2, 20, 'rgba(245, 239, 224, 0.85)', 'center');
       }
@@ -172,6 +225,13 @@ export function createRenderer(canvas) {
 
   function drawPed(state, ped) {
     if (!inView(state, ped.x, ped.y, 30)) return;
+    if (ped.fare) {
+      context.strokeStyle = PALETTE.gold;
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(ped.x, ped.y, 14, 0, Math.PI * 2);
+      context.stroke();
+    }
     if (ped.state === 'down') {
       context.fillStyle = ped.color;
       context.beginPath();
@@ -247,6 +307,39 @@ export function createRenderer(canvas) {
     context.fill();
   }
 
+  function drawTaxiMarker(state) {
+    const taxi = state.taxi;
+    if (!taxi) return;
+    if (taxi.waiting) {
+      // A waving fare: a gold ring and a dollar sign the player can spot from the road.
+      const pulse = 1 + Math.sin(state.time * 5) * 0.12;
+      context.strokeStyle = PALETTE.gold;
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(taxi.waiting.x, taxi.waiting.y, 22 * pulse, 0, Math.PI * 2);
+      context.stroke();
+      text('$', taxi.waiting.x, taxi.waiting.y - 26, 18, PALETTE.gold, 'center');
+    }
+    if (taxi.riding && taxi.dest) {
+      const pulse = 1 + Math.sin(state.time * 5) * 0.15;
+      context.strokeStyle = PALETTE.green;
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(taxi.dest.x, taxi.dest.y, 26 * pulse, 0, Math.PI * 2);
+      context.stroke();
+      context.fillStyle = PALETTE.green;
+      context.beginPath();
+      context.moveTo(taxi.dest.x, taxi.dest.y - 12);
+      context.lineTo(taxi.dest.x + 10, taxi.dest.y);
+      context.lineTo(taxi.dest.x, taxi.dest.y + 12);
+      context.lineTo(taxi.dest.x - 10, taxi.dest.y);
+      context.closePath();
+      context.fill();
+    }
+    // The garage always shows its sign, so the shop is easy to find.
+    text('GARAGE', GARAGE.x, GARAGE.y - 40, 16, PALETTE.gold, 'center');
+  }
+
   function drawWorld(state) {
     context.save();
     context.translate(VIEW.width / 2 - state.camera.x, VIEW.height / 2 - state.camera.y);
@@ -263,6 +356,7 @@ export function createRenderer(canvas) {
       text('$', pickup.x, pickup.y + bob + 5, 14, '#12351a', 'center');
     }
     drawMissionMarker(state);
+    drawTaxiMarker(state);
     for (const car of state.cars) drawCar(state, car);
     for (const ped of state.peds) drawPed(state, ped);
     drawPlayer(state);
@@ -327,9 +421,10 @@ export function createRenderer(canvas) {
         'Steal cars, outrun the police, run the jobs — own the city.',
         '',
         'WASD move · Shift run · E enter or steal a car · F punch',
-        'Mouse aim, click to shoot when armed · P pause',
+        'Mouse aim, click to shoot when armed · P pause · M mission · E taxi fare',
+        'Garage: R repair $150 · B sport car $800 · Taxi fares pay cash',
         '',
-        `Saved: $${save.cash} · ${save.missions} of 4 missions done · Best cash $${save.bestCash}`,
+        `Saved: $${save.cash} · ${save.missions} of ${MISSIONS.length} missions done · Best cash $${save.bestCash}`,
       ];
       drawPanel('SOLMAR', lines, 'Press Enter or click to play', PALETTE.gold);
       text('Streets of Sun — an open-world crime game', VIEW.width / 2, VIEW.height / 2 + 150, 20, PALETTE.text, 'center');
@@ -342,7 +437,7 @@ export function createRenderer(canvas) {
       const busted = state.overReason === 'busted';
       const lines = [
         busted ? 'The Solmar police caught up with Marco.' : 'Marco went down in the streets of Solmar.',
-        `Cash $${state.player.cash} · Missions ${state.completedMissions} of 4`,
+        `Cash $${state.player.cash} · Missions ${state.completedMissions} of ${MISSIONS.length}`,
         'Your save keeps your cash and missions.',
       ];
       drawPanel(busted ? 'BUSTED' : 'WASTED', lines, 'Press Enter to try again', PALETTE.red);

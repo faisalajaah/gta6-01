@@ -10,6 +10,13 @@ export function distance(x1, y1, x2, y2) {
   return Math.hypot(x2 - x1, y2 - y1);
 }
 
+/** The squared distance, for comparing distances without a square root. */
+export function distanceSquared(x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return dx * dx + dy * dy;
+}
+
 /** The shortest turn from `from` to `to`, in (-PI, PI]. */
 export function angleDifference(from, to) {
   let d = (to - from) % (Math.PI * 2);
@@ -115,20 +122,20 @@ export function onSidewalk(x, y) {
 /** The nearest point on the road network to (x, y), for spawning cars and police. */
 export function nearestRoadPoint(x, y) {
   let best = { x: ROADS_X[0], y: clamp(y, 0, WORLD.beachY) };
-  let bestD = Infinity;
+  let bestD2 = Infinity;
   for (const roadX of ROADS_X) {
     const point = { x: roadX, y: clamp(y, 0, WORLD.beachY) };
-    const d = distance(x, y, point.x, point.y);
-    if (d < bestD) {
-      bestD = d;
+    const d2 = distanceSquared(x, y, point.x, point.y);
+    if (d2 < bestD2) {
+      bestD2 = d2;
       best = point;
     }
   }
   for (const roadY of ROADS_Y) {
     const point = { x: clamp(x, 0, WORLD.width), y: roadY };
-    const d = distance(x, y, point.x, point.y);
-    if (d < bestD) {
-      bestD = d;
+    const d2 = distanceSquared(x, y, point.x, point.y);
+    if (d2 < bestD2) {
+      bestD2 = d2;
       best = point;
     }
   }

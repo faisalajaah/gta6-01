@@ -4,14 +4,15 @@
 //
 // ?seed=N fixes the city. ?shot=start|play|chase|end (with &seed=N) stages that scene instead
 // of running the loop, paints it twice and sets window.__shotReady for a screenshot.
-import { SAVE_KEY, STEP } from './config.js';
+import { MISSIONS, SAVE_KEY, STEP } from './config.js';
 import { createRandom } from './random.js';
-import { createWorld, EVENT_CRASH, EVENT_HIT, EVENT_MISSION, EVENT_OVER, EVENT_PICKUP, EVENT_PUNCH, EVENT_SHOT } from './world.js';
+import { createWorld, EVENT_CRASH, EVENT_FARE, EVENT_HIT, EVENT_MISSION, EVENT_OVER, EVENT_PICKUP, EVENT_PUNCH, EVENT_SHOT } from './world.js';
 import { ACTION_CONFIRM, ACTION_MISSION, ACTION_PAUSE, createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { createRenderer, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
 import { stageShot } from './shots.js';
 import { addToast, missionText, startMission } from './missions.js';
+import { createCar } from './vehicles.js';
 import { policeNear } from './police.js';
 
 /** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped, not replayed. */
@@ -38,12 +39,13 @@ function readSave() {
         cash: Number(saved.cash) || 0,
         missions: Number(saved.missions) || 0,
         bestCash: Number(saved.bestCash) || 0,
+        sport: saved.sport === true,
       };
     }
   } catch {
     // Storage can be off (private windows): the save then lasts this visit only.
   }
-  return { cash: 0, missions: 0, bestCash: 0 };
+  return { cash: 0, missions: 0, bestCash: 0, sport: false };
 }
 
 function writeSave(save) {
@@ -81,8 +83,8 @@ function runGame() {
   function applySave() {
     const state = world.state;
     state.player.cash = save.cash;
-    state.completedMissions = Math.min(save.missions, 4);
-    if (save.missions >= 4) {
+    state.completedMissions = Math.min(save.missions, MISSIONS.length);
+    if (save.missions >= MISSIONS.length) {
       state.mission.done = true;
       state.mission.active = false;
     } else {
@@ -92,6 +94,12 @@ function runGame() {
       state.player.armed = true;
       state.player.ammo = 24;
     }
+    if (save.sport && !state.player.sportOwned) {
+      state.player.sportOwned = true;
+      const sport = createCar(state, 690, 2180, 0, 'parked', '#f2c94c');
+      sport.sport = true;
+      state.cars.push(sport);
+    }
   }
 
   function saveProgress() {
@@ -99,6 +107,7 @@ function runGame() {
       cash: world.state.player.cash,
       missions: world.state.completedMissions,
       bestCash: Math.max(save.bestCash, world.state.player.cash),
+      sport: world.state.player.sportOwned,
     };
     writeSave(save);
   }
@@ -166,6 +175,7 @@ function runGame() {
     if (events & EVENT_PUNCH) audio.punch();
     if (events & EVENT_HIT) audio.hit();
     if (events & EVENT_PICKUP) audio.pickup();
+    if (events & EVENT_FARE) audio.farePaid();
     if (events & EVENT_CRASH) audio.crash();
     if (events & EVENT_OVER) endGame();
     audio.engine(world.state.player.onFoot ? 0 : Math.abs(world.state.player.speed));
@@ -176,7 +186,7 @@ function runGame() {
     requestAnimationFrame(frame);
     accumulator += Math.min((now - last) / 1000, MAX_FRAME);
     last = now;
-    const actions = handleActions();
+    let actions = handleActions();
     if (screen === SCREEN_TITLE) {
       while (accumulator >= STEP) {
         world.step(STEP, { x: 0, y: 0, run: false, shoot: false, shootX: 0, shootY: 0 }, 0);
@@ -188,6 +198,9 @@ function runGame() {
     } else if (screen === SCREEN_PLAY) {
       while (accumulator >= STEP) {
         step(actions);
+        // One-shot presses count once, even when a slow frame catches up on several steps:
+        // without this, E would enter and leave a car in the same frame.
+        actions = 0;
         accumulator -= STEP;
         if (screen !== SCREEN_PLAY) break;
       }

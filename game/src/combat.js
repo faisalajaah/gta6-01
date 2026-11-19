@@ -50,9 +50,13 @@ export function punch(state) {
 export function shoot(state, targetX, targetY) {
   const player = state.player;
   const angle = Math.atan2(targetY - player.y, targetX - player.x);
+  const muzzleX = player.x + Math.cos(angle) * 18;
+  const muzzleY = player.y + Math.sin(angle) * 18;
+  // A short muzzle flash at the barrel, so a shot reads even at a glance.
+  burst(state, muzzleX, muzzleY, '#ffd166', 4, 90);
   state.bullets.push({
-    x: player.x + Math.cos(angle) * 18,
-    y: player.y + Math.sin(angle) * 18,
+    x: muzzleX,
+    y: muzzleY,
     vx: Math.cos(angle) * BULLET_SPEED,
     vy: Math.sin(angle) * BULLET_SPEED,
     life: BULLET_LIFE,

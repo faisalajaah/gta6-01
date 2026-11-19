@@ -19,3 +19,8 @@ export function randomInt(random, min, max) {
 export function pick(random, items) {
   return items[Math.floor(random() * items.length)];
 }
+
+/** True with probability `p`, from a seeded random. */
+export function chance(random, p) {
+  return random() < p;
+}

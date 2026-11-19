@@ -1,7 +1,8 @@
 // The heads-up display: cash and health, the wanted stars, the mission objective, the speed,
 // the toasts and the minimap. Drawn in screen space after the world, so it never scrolls.
-import { FONT, MISSIONS, PALETTE, PARK, VIEW, WORLD } from './config.js';
+import { FONT, MISSIONS, PALETTE, PARK, SHOP, VIEW, WORLD } from './config.js';
 import { missionText } from './missions.js';
+import { taxiText } from './taxi.js';
 
 /** A cached canvas text writer: one font string per size, reused every frame. */
 export function createText(context) {
@@ -138,13 +139,36 @@ export function drawHud(context, state, camera) {
   if (player.armed) text(`Pistol ${player.ammo}`, 30, 100, 14, PALETTE.blue, 'left');
   // Wanted stars, top centre.
   drawStars(context, text, state.wanted, VIEW.width / 2, 52);
-  // Mission objective under the stars.
+  // Mission objective under the stars, with the distance when the target is off-screen.
   const objective = missionText(state);
-  if (objective) {
-    const width = Math.min(560, 24 + objective.length * 8.4);
+  let objectiveLine = objective;
+  if (state.mission.active && state.mission.target) {
+    const dist = Math.round(Math.hypot(state.mission.target.x - player.x, state.mission.target.y - player.y));
+    objectiveLine = `${objective} · ${dist}m`;
+  }
+  if (objectiveLine) {
+    const width = Math.min(620, 24 + objectiveLine.length * 8.4);
     context.fillStyle = PALETTE.panel;
     context.fillRect(VIEW.width / 2 - width / 2, 62, width, 34);
-    text(objective, VIEW.width / 2, 86, 17, PALETTE.text, 'center');
+    text(objectiveLine, VIEW.width / 2, 86, 17, PALETTE.text, 'center');
+  }
+  // Taxi job line, right under the objective.
+  const taxiLine = taxiText(state);
+  if (taxiLine) {
+    const width = Math.min(620, 24 + taxiLine.length * 8.4);
+    context.fillStyle = PALETTE.panel;
+    context.fillRect(VIEW.width / 2 - width / 2, 100, width, 30);
+    text(taxiLine, VIEW.width / 2, 121, 16, PALETTE.gold, 'center');
+  }
+  // Garage shop hint while Marco stands at the garage on foot.
+  if (state.garageNear) {
+    const shopLine = player.sportOwned
+      ? `Garage: R repair a car $${SHOP.repairCost}`
+      : `Garage: R repair a car $${SHOP.repairCost} · B sport car $${SHOP.sportCost}`;
+    const width = Math.min(620, 24 + shopLine.length * 8.4);
+    context.fillStyle = PALETTE.panel;
+    context.fillRect(VIEW.width / 2 - width / 2, VIEW.height - 52, width, 30);
+    text(shopLine, VIEW.width / 2, VIEW.height - 31, 16, PALETTE.gold, 'center');
   }
   drawObjectiveArrow(context, text, state, camera);
   // Speed and car health while driving, bottom left.
@@ -160,9 +184,9 @@ export function drawHud(context, state, camera) {
     text('CAR', 188, VIEW.height - 34, 13, PALETTE.text, 'left');
   }
   // Controls hint, bottom centre.
-  text('WASD move · Shift run · E enter car · F punch · Click shoot · P pause', VIEW.width / 2, VIEW.height - 14, 14, PALETTE.muted, 'center');
-  // Toasts, top centre under the objective.
-  let toastY = 116;
+  text('WASD move · Shift run · E car/taxi · F punch · Click shoot · P pause · M mission', VIEW.width / 2, VIEW.height - 14, 14, PALETTE.muted, 'center');
+  // Toasts, top centre under the objective and the taxi line.
+  let toastY = 140;
   for (const toast of state.toasts) {
     const width = Math.min(560, 24 + toast.text.length * 8.4);
     context.fillStyle = 'rgba(12, 14, 20, 0.6)';

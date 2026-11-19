@@ -29,6 +29,8 @@ export function createCar(state, x, y, angle, kind, color) {
     ramCd: 0,
     hitCd: 0,
     crashCd: 0,
+    skidCd: 0,
+    sport: false,
   };
   nextCarId += 1;
   return car;
@@ -110,16 +112,26 @@ export function updatePlayerCar(state, dt, controls, actions) {
   }
   const throttle = -controls.y;
   const steer = controls.x;
-  if (throttle > 0) car.speed += CAR.accel * dt;
+  const accel = car.sport ? CAR.accel * 1.3 : CAR.accel;
+  const topSpeed = car.sport ? CAR.maxSpeed * 1.35 : CAR.maxSpeed;
+  if (throttle > 0) car.speed += accel * dt;
   else if (throttle < 0) {
     if (car.speed > 10) car.speed -= CAR.brake * dt;
     else car.speed -= CAR.reverseAccel * dt;
   }
-  car.speed = clamp(car.speed, -CAR.maxReverse, CAR.maxSpeed);
+  car.speed = clamp(car.speed, -CAR.maxReverse, topSpeed);
   car.speed -= car.speed * CAR.drag * dt;
   if (Math.abs(car.speed) < 4 && throttle === 0) car.speed = 0;
   const turn = steer * CAR.turnRate * dt * clamp(Math.abs(car.speed) / 120, 0.15, 1) * (car.speed < 0 ? -1 : 1);
   car.angle += turn;
+  // Hard cornering at speed throws dust and smoke off the rear wheels.
+  if (car.skidCd > 0) car.skidCd -= dt;
+  if (Math.abs(car.speed) > 320 && Math.abs(steer) > 0.5 && car.skidCd <= 0) {
+    car.skidCd = 0.09;
+    const rearX = car.x - Math.cos(car.angle) * (CAR.length / 2);
+    const rearY = car.y - Math.sin(car.angle) * (CAR.length / 2);
+    burst(state, rearX, rearY, '#b8b0a0', 3, 60);
+  }
   const dx = Math.cos(car.angle) * car.speed * dt;
   const dy = Math.sin(car.angle) * car.speed * dt;
   if (car.crashCd > 0) car.crashCd -= dt;

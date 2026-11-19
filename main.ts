@@ -1,6 +1,8 @@
 // Solmar — Streets of Sun, my gta6-01 entry: an original open-world crime game in game/
 // (a sun-soaked coastal city to explore on foot and by car, traffic, police, four story
 // missions), plain static files a desktop browser loads offline. This program hands it in.
+// v2: six story missions, a repeatable taxi job, a garage shop (repair and a sport car),
+// a smoother camera, richer districts and restaged screenshots of the same game.
 // A working gta6-01 entry (Node 22, standard library only): the game is this directory's
 // game/ folder, plain static files a desktop browser loads offline (game/index.html and its ES
 // modules, no library and no network request), and the program hands it in. It copies game/ and

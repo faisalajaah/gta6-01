@@ -152,6 +152,11 @@ function updatePed(state, ped, dt) {
     if (ped.downTimer <= 0) ped.state = 'walk';
     return;
   }
+  if (ped.state === 'wait') {
+    // A fare waving for a cab stands on the sidewalk and waves, never wanders off.
+    ped.angle = Math.sin(state.time * 3) > 0 ? -Math.PI / 2 : Math.PI / 2;
+    return;
+  }
   const player = state.player;
   const playerCar = player.car;
   const danger = playerCar
