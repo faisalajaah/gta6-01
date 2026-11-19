@@ -8,6 +8,8 @@ export const ACTION_PUNCH = 8;
 export const ACTION_MISSION = 16;
 export const ACTION_REPAIR = 32;
 export const ACTION_BUY = 64;
+/** The car horn: one short honk, and nearby pedestrians get out of the way. */
+export const ACTION_HORN = 128;
 
 const UP = new Set(['ArrowUp', 'KeyW']);
 const DOWN = new Set(['ArrowDown', 'KeyS']);
@@ -21,6 +23,8 @@ const PUNCH = new Set(['KeyF']);
 const MISSION = new Set(['KeyM']);
 const REPAIR = new Set(['KeyR']);
 const BUY = new Set(['KeyB']);
+const HORN = new Set(['KeyH']);
+const HANDBRAKE = new Set(['Space']);
 
 export function createInput(target) {
   const held = new Set();
@@ -41,6 +45,8 @@ export function createInput(target) {
     else if (MISSION.has(event.code)) press(event, ACTION_MISSION);
     else if (REPAIR.has(event.code)) press(event, ACTION_REPAIR);
     else if (BUY.has(event.code)) press(event, ACTION_BUY);
+    else if (HORN.has(event.code)) press(event, ACTION_HORN);
+    else if (HANDBRAKE.has(event.code)) held.add(event.code);
     else return;
     event.preventDefault();
   });
@@ -80,7 +86,7 @@ export function createInput(target) {
     controls() {
       const x = (has(RIGHT) ? 1 : 0) - (has(LEFT) ? 1 : 0);
       const y = (has(DOWN) ? 1 : 0) - (has(UP) ? 1 : 0);
-      return { x, y, run: has(RUN), shoot: mouse.down };
+      return { x, y, run: has(RUN), shoot: mouse.down, handbrake: has(HANDBRAKE) };
     },
     /** The one-shot presses since the last call, as ACTION_* flags. */
     takeActions() {

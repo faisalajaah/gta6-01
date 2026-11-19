@@ -42,6 +42,7 @@ export function punch(state) {
   } else {
     best.target.health -= 10;
     burst(state, best.target.x, best.target.y, '#f2c94c', 8, 120);
+    if (best.target.health <= 0) disableCar(best.target);
   }
   return true;
 }
@@ -57,10 +58,19 @@ export function shoot(state, targetX, targetY) {
   state.bullets.push({
     x: muzzleX,
     y: muzzleY,
+    px: muzzleX,
+    py: muzzleY,
     vx: Math.cos(angle) * BULLET_SPEED,
     vy: Math.sin(angle) * BULLET_SPEED,
     life: BULLET_LIFE,
   });
+}
+
+/** A cruiser shot until its health runs out stops dead and smokes. */
+export function disableCar(car) {
+  car.health = 0;
+  car.disabled = true;
+  car.speed = 0;
 }
 
 function bulletHitsCar(state, bullet) {
@@ -68,6 +78,7 @@ function bulletHitsCar(state, bullet) {
     if (distance(bullet.x, bullet.y, car.x, car.y) < CAR.radius) {
       car.health -= BULLET_CAR_DAMAGE;
       burst(state, bullet.x, bullet.y, '#f2c94c', 6, 100);
+      if (car.health <= 0 && car.kind === 'police') disableCar(car);
       return true;
     }
   }
@@ -91,6 +102,8 @@ export function updateBullets(state, dt) {
   for (let index = state.bullets.length - 1; index >= 0; index -= 1) {
     const bullet = state.bullets[index];
     bullet.life -= dt;
+    bullet.px = bullet.x;
+    bullet.py = bullet.y;
     bullet.x += bullet.vx * dt;
     bullet.y += bullet.vy * dt;
     let dead = bullet.life <= 0;

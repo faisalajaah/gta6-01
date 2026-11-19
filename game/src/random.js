@@ -24,3 +24,20 @@ export function pick(random, items) {
 export function chance(random, p) {
   return random() < p;
 }
+
+/** A number in [min, max) from a seeded random. */
+export function randomRange(random, min, max) {
+  return min + random() * (max - min);
+}
+
+/** A shuffled copy of an array (Fisher-Yates), from a seeded random. */
+export function shuffle(random, items) {
+  const copy = items.slice();
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const other = Math.floor(random() * (index + 1));
+    const held = copy[index];
+    copy[index] = copy[other];
+    copy[other] = held;
+  }
+  return copy;
+}

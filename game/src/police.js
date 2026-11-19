@@ -1,9 +1,41 @@
 // The wanted level and the Solmar police: black-and-white cruisers that spawn when the player
 // commits crimes, chase the player through the streets, ram their car and arrest them on foot.
 import { CAR, POLICE, WANTED, WORLD } from './config.js';
-import { angleDifference, clamp, distance, moveCircle, nearestRoadPoint } from './geometry.js';
+import { angleDifference, clamp, distance, moveCircle, nearestRoad, nearestRoadPoint } from './geometry.js';
 import { createCar, steerCarTowards } from './vehicles.js';
 import { burst } from './world.js';
+
+/**
+ * At five stars the police block the road ahead of the player with two parked cruisers.
+ * Returns true when a roadblock is placed, so the caller can warn the player. The block
+ * clears when the heat fades, so a new five-star heat can block the road again.
+ */
+export function maybeRoadblock(state) {
+  if (state.roadblock) return false;
+  if (state.wanted < POLICE.roadblockStars) return false;
+  const player = state.player;
+  const road = nearestRoad(player.x, player.y);
+  const dir = Math.sign(road.axis === 'y' ? Math.cos(player.angle) : Math.sin(player.angle)) || 1;
+  const blockX = road.axis === 'y'
+    ? clamp(player.x + dir * 500, 100, WORLD.width - 100)
+    : road.coord;
+  const blockY = road.axis === 'x'
+    ? clamp(player.y + dir * 500, 100, WORLD.beachY - 100)
+    : road.coord;
+  const cars = [];
+  for (const offset of [-30, 30]) {
+    const car = createCar(state,
+      road.axis === 'y' ? blockX : blockX + offset,
+      road.axis === 'y' ? blockY + offset : blockY,
+      road.axis === 'y' ? Math.PI / 2 : 0, 'parked', '#f5f5f5');
+    car.speed = 0;
+    car.cruise = 0;
+    state.cars.push(car);
+    cars.push(car);
+  }
+  state.roadblock = { x: blockX, y: blockY, axis: road.axis, cars };
+  return true;
+}
 
 /** Raise the wanted level by `amount` stars and restart the crime-free clock. */
 export function addWanted(state, amount) {
@@ -84,11 +116,15 @@ export function updatePolice(state, dt) {
   policeCars = state.cars.filter((car) => car.kind === 'police');
   for (const car of policeCars) {
     if (state.wanted === 0) {
-      // The heat is off: this cruiser goes back to patrolling and drives away.
+      // A disabled cruiser stays police and is towed away by the cleanup below;
+      // a working one goes back to patrolling and drives away.
+      if (car.disabled) continue;
       car.kind = 'traffic';
       car.cruise = 140;
       continue;
     }
+    // A cruiser shot until it stops is disabled: it smokes where it died, it does not chase.
+    if (car.disabled) continue;
     updatePoliceCar(state, car, dt);
     if (state.overReason) return 8;
   }
@@ -97,7 +133,7 @@ export function updatePolice(state, dt) {
   const player = state.player;
   let nearPolice = false;
   for (const car of policeCars) {
-    if (distance(player.x, player.y, car.x, car.y) < POLICE.bustDistance) nearPolice = true;
+    if (!car.disabled && distance(player.x, player.y, car.x, car.y) < POLICE.bustDistance) nearPolice = true;
   }
   if (player.onFoot && nearPolice) {
     state.bustTimer += dt;
@@ -113,10 +149,10 @@ export function updatePolice(state, dt) {
   return 0;
 }
 
-/** True when any police cruiser is close enough for its siren to be heard. */
+/** True when any working police cruiser is close enough for its siren to be heard. */
 export function policeNear(state) {
   for (const car of state.cars) {
-    if (car.kind === 'police' && distance(state.player.x, state.player.y, car.x, car.y) < 500) return true;
+    if (car.kind === 'police' && !car.disabled && distance(state.player.x, state.player.y, car.x, car.y) < 500) return true;
   }
   return false;
 }

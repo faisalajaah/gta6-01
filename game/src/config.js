@@ -42,6 +42,9 @@ export const CAR = {
   maxSpeed: 540,
   maxReverse: 170,
   turnRate: 4.0,
+  /** Extra turn and drag while the handbrake (Space) is held: tighter, dustier corners. */
+  handbrakeTurn: 1.6,
+  handbrakeDrag: 1.4,
   drag: 0.55,
   health: 100,
 };
@@ -56,13 +59,15 @@ export const TRAFFIC = {
 export const PEDS = { count: 34, speedMin: 45, speedMax: 80 };
 
 export const POLICE = {
-  maxCars: 4,
+  maxCars: 5,
   chaseSpeed: 560,
   ramDamage: 12,
   ramCooldown: 0.8,
   bustDistance: 48,
   bustTime: 1.2,
   spawnDistance: 520,
+  /** At five stars the police block the road ahead of the player, once per heat. */
+  roadblockStars: 5,
 };
 
 export const WANTED = {
@@ -83,6 +88,9 @@ export const MISSIONS = [
   { id: 'marina-job', title: 'The Marina Job', reward: 800 },
   { id: 'palms-heist', title: 'Palms Heist', reward: 1000 },
   { id: 'tower-run', title: 'Tower Run', reward: 1200 },
+  { id: 'the-getaway', title: 'The Getaway', reward: 1400 },
+  { id: 'street-king', title: 'Street King', reward: 1600 },
+  { id: 'the-last-job', title: 'The Last Job', reward: 2000 },
 ];
 
 /** Landmark spots the missions and the garage use. */
@@ -90,6 +98,23 @@ export const GARAGE = { x: 600, y: 2200 };
 export const HOTEL = { x: 2800, y: 2000 };
 export const TOWER = { x: 1200, y: 800 };
 export const MARINA = { x: 3000, y: 2200 };
+/** The bank on the south-west road, the finale's target. */
+export const BANK = { x: 1000, y: 2000 };
+/** The safehouse on the north-east corner, where the Getaway ends. */
+export const SAFEHOUSE = { x: 3000, y: 200 };
+/** The stadium block (roads x 2200..2600, y 200..600): an oval field, no buildings. */
+export const STADIUM = { x: 2244, y: 244, w: 312, h: 312 };
+/** The street-race start line, on the road beside the stadium. */
+export const RACE_START = { x: 2200, y: 600 };
+
+/** Hidden sun packages: twelve gold stars tucked around the city; all twelve pay a bonus. */
+export const COLLECTIBLES = { count: 12, pickupCash: 25, allBonus: 500 };
+
+/** The repeatable street race at the stadium: three checkpoints against a rival driver. */
+export const RACE = { prize: 300, countdown: 3, cooldown: 10 };
+
+/** One full day in Solmar lasts four minutes of play: noon, dusk, night, dawn. */
+export const DAY = { cycleSeconds: 240, nightStart: 0.36, nightEnd: 0.64 };
 
 /** The taxi side job: a fare pays a base amount plus a per-metre rate and a time bonus. */
 export const TAXI = {

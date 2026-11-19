@@ -65,6 +65,9 @@ createServer((request, response) => {
     'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
     'content-length': size,
     'cache-control': 'no-store',
+    // The game makes no network requests of its own: keep the page that way.
+    'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; media-src 'none'; connect-src 'none'; object-src 'none'",
+    'x-content-type-options': 'nosniff',
   });
   createReadStream(file).pipe(response);
 }).listen(port, '127.0.0.1', () => {

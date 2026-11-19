@@ -8,6 +8,17 @@ import { addWanted } from './police.js';
 import { burst } from './world.js';
 
 const PED_SHIRTS = ['#e5534b', '#4fc3f7', '#f2c94c', '#7dd87d', '#c77ddb', '#f2836b', '#e8e2d4', '#5b8dd9'];
+const BUS_COLORS = ['#2e86ab', '#e07a5f', '#81b29a'];
+
+/** Three of the traffic cars are city buses: longer, slower, harder to miss. */
+export function makeBus(state, car) {
+  car.bus = true;
+  car.length = 76;
+  car.color = pick(state.random, BUS_COLORS);
+  car.cruise = 90;
+  car.speed = 90;
+  return car;
+}
 
 /** A road point near the player, for spawning traffic that the player can actually see. */
 function spawnPointNear(state, minD, maxD) {
@@ -34,6 +45,8 @@ export function spawnTraffic(state) {
     car.angle = road.axis === 'x' ? (car.dir > 0 ? Math.PI / 2 : -Math.PI / 2) : (car.dir > 0 ? 0 : Math.PI);
     car.speed = TRAFFIC.speedMin + state.random() * (TRAFFIC.speedMax - TRAFFIC.speedMin);
     car.cruise = car.speed;
+    // The first three cars on the road are city buses.
+    if (index < 3) makeBus(state, car);
     state.cars.push(car);
   }
   // Parked cars along the roads, free to take without the heat.
@@ -72,9 +85,32 @@ export function spawnPeds(state) {
       downTimer: 0,
       fleeTimer: 0,
       color: pick(state.random, PED_SHIRTS),
+      /** Body scale: the crowd is no longer one identical cut-out. */
+      size: 0.85 + state.random() * 0.3,
     };
     ped.angle = ped.axis === 'x' ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : (dir > 0 ? 0 : Math.PI);
     state.peds.push(ped);
+  }
+  // Beach joggers: a few fast walkers on the sand by the beach road, easy to spot.
+  for (let index = 0; index < 4; index += 1) {
+    const jogger = {
+      x: 300 + state.random() * 2600,
+      y: 2246,
+      angle: 0,
+      speed: 70 + state.random() * 15,
+      axis: 'y',
+      dir: state.random() < 0.5 ? 1 : -1,
+      road: 2200,
+      side: 1,
+      state: 'walk',
+      downTimer: 0,
+      fleeTimer: 0,
+      color: pick(state.random, ['#ff6b6b', '#ffd166', '#06d6a0']),
+      size: 0.95 + state.random() * 0.1,
+      jogger: true,
+    };
+    jogger.angle = jogger.dir > 0 ? 0 : Math.PI;
+    state.peds.push(jogger);
   }
 }
 
@@ -127,7 +163,7 @@ function updateTrafficCar(state, car, dt) {
 
 export function updateTraffic(state, dt) {
   for (const car of state.cars) {
-    if (car.kind === 'police') continue;
+    if (car.kind === 'police' || car.kind === 'rival') continue;
     updateTrafficCar(state, car, dt);
     // Traffic too far from the player is respawned near the player, so the streets stay busy.
     if (car.kind === 'traffic' && distance(state.player.x, state.player.y, car.x, car.y) > 1700) {

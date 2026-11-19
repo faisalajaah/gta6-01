@@ -1,11 +1,13 @@
-// The screenshot scenes behind ?shot=start|play|chase|end. Each one plays the real rules
+// The screenshot scenes behind ?shot=heist|race|stadium|garage. Each one plays the real rules
 // forward from a fresh world for a fixed number of steps, steered by a simple autopilot, so the
 // frame is what a short game really looks like and the same seed always gives the same frame.
-import { STEP } from './config.js';
+import { GARAGE, STEP } from './config.js';
 import { angleDifference, clamp, distance } from './geometry.js';
 import { startMission } from './missions.js';
 import { addWanted } from './police.js';
 import { stageFare } from './taxi.js';
+import { createCar } from './vehicles.js';
+import { RACE_CHECKPOINTS, startRace } from './race.js';
 import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
 
 const START_SECONDS = 6;
@@ -13,6 +15,10 @@ const PLAY_SECONDS = 14;
 const CHASE_SECONDS = 9;
 const DRIVE_SECONDS = 6;
 const END_SECONDS = 8;
+const HEIST_SECONDS = 9;
+const RACE_SECONDS = 8;
+const STADIUM_SECONDS = 6;
+const GARAGE_SECONDS = 6;
 
 const NEUTRAL = { x: 0, y: 0, run: false, shoot: false, shootX: 0, shootY: 0 };
 
@@ -24,6 +30,13 @@ const BEACH_WAYPOINTS = [
   { x: 1400, y: 2200 },
   { x: 1000, y: 2200 },
   { x: 600, y: 2200 },
+];
+
+/** The heist getaway, east along the beach road from the Bank toward the Marina. */
+const BEACH_EAST_WAYPOINTS = [
+  { x: 1800, y: 2200 },
+  { x: 2400, y: 2200 },
+  { x: 3000, y: 2200 },
 ];
 
 /** Downtown east along the tower road, past Solmar Tower. */
@@ -106,12 +119,87 @@ function walkTowards(tx, ty) {
 }
 
 /**
- * Set `world` to the named scene (start, play, chase or end; any other name is start) and return
- * the screen to draw over it and the save to show on the title.
+ * Set `world` to the named scene (heist, race, stadium, garage, or the older start, play,
+ * chase, drive and end; any other name is start) and return the screen to draw over it
+ * and the save to show on the title.
  */
 export function stageShot(name, world) {
   const state = world.state;
   world.reset();
+  if (name === 'heist') {
+    // The cover: the Last Job at night — five stars, the Bank just robbed, Marco fleeing
+    // east down the beach road toward the Tower. The heat arrives at the end of the run,
+    // so the frame catches him mid-flight with cruisers spawning and a roadblock going
+    // up ahead, the beach and the sea along the bottom of the frame.
+    putMarcoInCar(state, 1200, 2200, 0, 2200);
+    state.player.cash = 2400;
+    state.completedMissions = 8;
+    startMission(state, 8);
+    state.mission.step = 1;
+    state.mission.target = { x: 1200, y: 800 };
+    state.mission.timer = 90;
+    // Halfway through the dark stretch of the four-minute day.
+    state.dayTime = 120;
+    const drive = createDriver(BEACH_EAST_WAYPOINTS);
+    for (let index = 0; index < 6 / STEP; index += 1) {
+      world.step(STEP, drive(state), 0);
+      if (state.overReason) break;
+    }
+    addWanted(state, 5);
+    for (let index = 0; index < (HEIST_SECONDS - 6) / STEP; index += 1) {
+      world.step(STEP, drive(state), 0);
+      if (state.overReason) break;
+    }
+    return { screen: state.overReason ? SCREEN_OVER : SCREEN_PLAY, save: { cash: 2400, missions: 8, bestCash: 2400 } };
+  }
+  if (name === 'race') {
+    // Street King mid-race: Marco and the rival through downtown, checkpoint rings on the
+    // road and the race line on the HUD. The countdown is skipped so the frame catches
+    // the race in full flight.
+    putMarcoInCar(state, 2200, 600, 0, 600);
+    state.player.cash = 1600;
+    state.completedMissions = 7;
+    startMission(state, 7);
+    startRace(state, 300);
+    state.race.countdown = 0;
+    const drive = createDriver(RACE_CHECKPOINTS);
+    for (let index = 0; index < RACE_SECONDS / STEP; index += 1) {
+      world.step(STEP, drive(state), 0);
+      if (state.overReason) break;
+    }
+    return { screen: SCREEN_PLAY, save: { cash: 1600, missions: 7, bestCash: 1600 } };
+  }
+  if (name === 'stadium') {
+    // Marco on foot in the stadium field, a sun package glowing beside him and the running
+    // track around him: the new district and the collectibles in one frame.
+    state.player.x = 2320;
+    state.player.y = 320;
+    state.player.cash = 400;
+    state.completedMissions = 6;
+    startMission(state, 6);
+    for (let index = 0; index < STADIUM_SECONDS / STEP; index += 1) {
+      world.step(STEP, walkTowards(2360, 360)(state), 0);
+    }
+    return { screen: SCREEN_PLAY, save: { cash: 400, missions: 6, bestCash: 400 } };
+  }
+  if (name === 'garage') {
+    // Marco on foot at the garage, the gold sport car parked beside him and a fare waving
+    // for a cab: the shop, the car and the taxi job in one frame.
+    state.player.x = 600;
+    state.player.y = 2130;
+    state.player.cash = 900;
+    state.completedMissions = 5;
+    startMission(state, 5);
+    const sport = createCar(state, GARAGE.x + 90, GARAGE.y - 20, 0, 'parked', '#f2c94c');
+    sport.sport = true;
+    state.cars.push(sport);
+    state.player.sportOwned = true;
+    stageFare(state, 760, 2160);
+    for (let index = 0; index < GARAGE_SECONDS / STEP; index += 1) {
+      world.step(STEP, NEUTRAL, 0);
+    }
+    return { screen: SCREEN_PLAY, save: { cash: 900, missions: 5, bestCash: 900 } };
+  }
   if (name === 'play') {
     // Marco on foot by the park, a fare waving for a cab beside him: city life, the new
     // taxi job and the park in one frame.

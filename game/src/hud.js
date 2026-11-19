@@ -1,8 +1,9 @@
 // The heads-up display: cash and health, the wanted stars, the mission objective, the speed,
 // the toasts and the minimap. Drawn in screen space after the world, so it never scrolls.
-import { FONT, MISSIONS, PALETTE, PARK, SHOP, VIEW, WORLD } from './config.js';
+import { DAY, FONT, MISSIONS, PALETTE, PARK, SHOP, STADIUM, VIEW, WORLD } from './config.js';
 import { missionText } from './missions.js';
 import { taxiText } from './taxi.js';
+import { raceText } from './race.js';
 
 /** A cached canvas text writer: one font string per size, reused every frame. */
 export function createText(context) {
@@ -65,6 +66,14 @@ function drawMinimap(context, state) {
   }
   context.fillStyle = '#4d7a3a';
   context.fillRect(toMapX(PARK.x), toMapY(PARK.y), PARK.w * scaleX, PARK.h * scaleY);
+  // The stadium field, and the sun packages still waiting to be found.
+  context.fillStyle = '#6a9a4a';
+  context.fillRect(toMapX(STADIUM.x), toMapY(STADIUM.y), STADIUM.w * scaleX, STADIUM.h * scaleY);
+  context.fillStyle = PALETTE.gold;
+  for (const item of state.collectibles || []) {
+    if (item.taken) continue;
+    context.fillRect(toMapX(item.x) - 1.5, toMapY(item.y) - 1.5, 3, 3);
+  }
   // The mission target, the police and the player.
   const mission = state.mission;
   if (mission.active && mission.target) {
@@ -160,6 +169,14 @@ export function drawHud(context, state, camera) {
     context.fillRect(VIEW.width / 2 - width / 2, 100, width, 30);
     text(taxiLine, VIEW.width / 2, 121, 16, PALETTE.gold, 'center');
   }
+  // Street race line, under the taxi line when a race is on or offered.
+  const raceLine = raceText(state);
+  if (raceLine) {
+    const width = Math.min(620, 24 + raceLine.length * 8.4);
+    context.fillStyle = PALETTE.panel;
+    context.fillRect(VIEW.width / 2 - width / 2, 134, width, 30);
+    text(raceLine, VIEW.width / 2, 155, 16, PALETTE.gold, 'center');
+  }
   // Garage shop hint while Marco stands at the garage on foot.
   if (state.garageNear) {
     const shopLine = player.sportOwned
@@ -184,9 +201,16 @@ export function drawHud(context, state, camera) {
     text('CAR', 188, VIEW.height - 34, 13, PALETTE.text, 'left');
   }
   // Controls hint, bottom centre.
-  text('WASD move · Shift run · E car/taxi · F punch · Click shoot · P pause · M mission', VIEW.width / 2, VIEW.height - 14, 14, PALETTE.muted, 'center');
-  // Toasts, top centre under the objective and the taxi line.
-  let toastY = 140;
+  text('WASD move · Shift run · E car/taxi · F punch · Click shoot · Space handbrake · H horn · P pause · M mission', VIEW.width / 2, VIEW.height - 14, 14, PALETTE.muted, 'center');
+  // The day clock and the sun packages, under the minimap.
+  const phase = (state.dayTime / DAY.cycleSeconds) % 1;
+  const minutes = Math.floor((12 * 60 + phase * 24 * 60) % (24 * 60));
+  const clock = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+  const found = (state.collectibles || []).filter((item) => item.taken).length;
+  const total = (state.collectibles || []).length;
+  text(`${state.night ? 'Night' : 'Day'} ${clock} · Sun ${found}/${total}`, VIEW.width - 16, 190, 15, state.night ? '#9db8ff' : PALETTE.muted, 'right');
+  // Toasts, top centre under the objective, the taxi line and the race line.
+  let toastY = raceLine ? 178 : 140;
   for (const toast of state.toasts) {
     const width = Math.min(560, 24 + toast.text.length * 8.4);
     context.fillStyle = 'rgba(12, 14, 20, 0.6)';

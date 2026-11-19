@@ -31,6 +31,12 @@ export function createCar(state, x, y, angle, kind, color) {
     crashCd: 0,
     skidCd: 0,
     sport: false,
+    /** Body length in world units: buses run longer than cars. */
+    length: CAR.length,
+    /** True while the driver is braking: the renderer lights the brake lamps. */
+    braking: false,
+    /** A shot-up cruiser stops dead and smokes instead of chasing. */
+    disabled: false,
   };
   nextCarId += 1;
   return car;
@@ -110,10 +116,20 @@ export function updatePlayerCar(state, dt, controls, actions) {
     exitCar(state);
     return 0;
   }
+  if (state.race && state.race.active && state.race.countdown > 0) {
+    // The race countdown holds the car on the start line.
+    car.speed = 0;
+    player.x = car.x;
+    player.y = car.y;
+    player.angle = car.angle;
+    player.speed = 0;
+    return 0;
+  }
   const throttle = -controls.y;
   const steer = controls.x;
   const accel = car.sport ? CAR.accel * 1.3 : CAR.accel;
   const topSpeed = car.sport ? CAR.maxSpeed * 1.35 : CAR.maxSpeed;
+  car.braking = throttle < 0 && car.speed > 10;
   if (throttle > 0) car.speed += accel * dt;
   else if (throttle < 0) {
     if (car.speed > 10) car.speed -= CAR.brake * dt;
@@ -122,15 +138,22 @@ export function updatePlayerCar(state, dt, controls, actions) {
   car.speed = clamp(car.speed, -CAR.maxReverse, topSpeed);
   car.speed -= car.speed * CAR.drag * dt;
   if (Math.abs(car.speed) < 4 && throttle === 0) car.speed = 0;
-  const turn = steer * CAR.turnRate * dt * clamp(Math.abs(car.speed) / 120, 0.15, 1) * (car.speed < 0 ? -1 : 1);
+  // The handbrake (Space) bites harder into a turn and scrubs speed off with dust.
+  const handbrake = controls.handbrake && Math.abs(car.speed) > 60;
+  if (handbrake) car.speed -= car.speed * CAR.handbrakeDrag * dt;
+  const turnRate = CAR.turnRate * (handbrake ? CAR.handbrakeTurn : 1);
+  const turn = steer * turnRate * dt * clamp(Math.abs(car.speed) / 120, 0.15, 1) * (car.speed < 0 ? -1 : 1);
   car.angle += turn;
   // Hard cornering at speed throws dust and smoke off the rear wheels.
   if (car.skidCd > 0) car.skidCd -= dt;
-  if (Math.abs(car.speed) > 320 && Math.abs(steer) > 0.5 && car.skidCd <= 0) {
+  if ((Math.abs(car.speed) > 320 && Math.abs(steer) > 0.5 || handbrake && Math.abs(steer) > 0.3) && car.skidCd <= 0) {
     car.skidCd = 0.09;
-    const rearX = car.x - Math.cos(car.angle) * (CAR.length / 2);
-    const rearY = car.y - Math.sin(car.angle) * (CAR.length / 2);
+    const rearX = car.x - Math.cos(car.angle) * (car.length / 2);
+    const rearY = car.y - Math.sin(car.angle) * (car.length / 2);
     burst(state, rearX, rearY, '#b8b0a0', 3, 60);
+    car.skidding = true;
+  } else {
+    car.skidding = false;
   }
   const dx = Math.cos(car.angle) * car.speed * dt;
   const dy = Math.sin(car.angle) * car.speed * dt;

@@ -2,17 +2,18 @@
 // player on foot and in cars, traffic, pedestrians, police, missions and the wanted level.
 // step() advances one fixed step and returns what happened as bit flags, so the caller can react
 // (sounds, announcements) without the world knowing about screens or sound.
-import { BLOCK_X, BLOCK_Y, CAR, GARAGE, PARK, PLAYER, ROADS_X, ROADS_Y, SHOP, VIEW, WANTED, WORLD } from './config.js';
+import { BLOCK_X, BLOCK_Y, CAR, COLLECTIBLES, DAY, GARAGE, PARK, PLAYER, ROADS_X, ROADS_Y, SHOP, STADIUM, VIEW, WANTED, WORLD } from './config.js';
 import { pick } from './random.js';
 import { clamp, distance } from './geometry.js';
 import { addToast, updateMission } from './missions.js';
-import { addWanted, updatePolice } from './police.js';
+import { addWanted, maybeRoadblock, updatePolice } from './police.js';
 import { punch, shoot, updateBullets } from './combat.js';
 import { enterNearestCar, createCar, updatePlayerCar } from './vehicles.js';
 import { moveCircle } from './geometry.js';
 import { spawnPeds, spawnTraffic, updatePeds, updateTraffic } from './traffic.js';
-import { ACTION_BUY, ACTION_ENTER, ACTION_PUNCH, ACTION_REPAIR } from './input.js';
+import { ACTION_BUY, ACTION_ENTER, ACTION_HORN, ACTION_PUNCH, ACTION_REPAIR } from './input.js';
 import { createTaxiState, fareNearby, spawnFare, startFare, updateTaxi } from './taxi.js';
+import { createRaceState, updateRace } from './race.js';
 
 export const EVENT_PICKUP = 1;
 export const EVENT_CRIME = 2;
@@ -23,6 +24,25 @@ export const EVENT_PUNCH = 32;
 export const EVENT_HIT = 64;
 export const EVENT_CRASH = 128;
 export const EVENT_FARE = 256;
+export const EVENT_HORN = 512;
+export const EVENT_RACE = 1024;
+export const EVENT_COLLECT = 2048;
+
+/** Where the twelve hidden sun packages wait: roads, landmarks and the stadium field. */
+const COLLECTIBLE_SPOTS = [
+  { x: 200, y: 200 },
+  { x: 3000, y: 200 },
+  { x: 1400, y: 1000 },
+  { x: 2800, y: 2000 },
+  { x: 3000, y: 2200 },
+  { x: 1200, y: 800 },
+  { x: 1000, y: 2000 },
+  { x: 600, y: 2200 },
+  { x: 2400, y: 400 },
+  { x: 200, y: 2200 },
+  { x: 1800, y: 1400 },
+  { x: 2200, y: 1000 },
+];
 
 const BUILDING_COLORS = ['#d9a05b', '#e8836b', '#e0b56a', '#7fb8a8', '#f0e0b8', '#c97e5e', '#a8b8a0', '#d98ab0', '#9fb3c8', '#e8b4a0'];
 const ROOF_COLORS = ['#a08068', '#96705a', '#8a7f74', '#7a8a7a', '#b09078', '#8a6f8a'];
@@ -42,6 +62,8 @@ function generateCity(random) {
         }
         continue;
       }
+      // The stadium block stays open: an oval field with a running track, no buildings.
+      if (inner.x === STADIUM.x && inner.y === STADIUM.y) continue;
       // Buildings sit inside the block with grass around them, so the city reads green as
       // well as built-up.
       const area = { x: inner.x + 26, y: inner.y + 26, w: inner.w - 52, h: inner.h - 52 };
@@ -63,11 +85,13 @@ function generateCity(random) {
       }
     }
   }
-  // Landmarks the player learns by name: the tower and the hotel.
+  // Landmarks the player learns by name: the tower, the hotel, the bank.
   const tower = buildings.find((b) => b.x > 1000 && b.x < 1400 && b.y > 600 && b.y < 1000);
   if (tower) tower.name = 'SOLMAR TOWER';
   const hotel = buildings.find((b) => b.x > 2600 && b.x < 3000 && b.y > 1800 && b.y < 2200);
   if (hotel) hotel.name = 'PALMS HOTEL';
+  const bank = buildings.find((b) => b.x > 800 && b.x < 1200 && b.y > 1800 && b.y < 2200);
+  if (bank) bank.name = 'BANK';
   return { buildings, trees };
 }
 
@@ -100,6 +124,12 @@ export function createWorld(random) {
     particles: [],
     pickups: [],
     taxi: createTaxiState(),
+    race: createRaceState(),
+    collectibles: COLLECTIBLE_SPOTS.map((spot) => ({ ...spot, taken: false })),
+    roadblock: null,
+    /** Seconds into the four-minute day, and whether it is night right now. */
+    dayTime: 0,
+    night: false,
     garageNear: false,
     wanted: 0,
     crimeTimer: 99,
@@ -135,6 +165,11 @@ export function createWorld(random) {
     state.particles = [];
     state.pickups = [];
     state.taxi = createTaxiState();
+    state.race = createRaceState();
+    state.collectibles = COLLECTIBLE_SPOTS.map((spot) => ({ ...spot, taken: false }));
+    state.roadblock = null;
+    state.dayTime = 0;
+    state.night = false;
     state.garageNear = false;
     state.wanted = 0;
     state.crimeTimer = 99;
@@ -264,6 +299,26 @@ export function createWorld(random) {
     return shopEvent ? EVENT_PICKUP : 0;
   }
 
+  function updateCollectibles() {
+    const player = state.player;
+    for (const item of state.collectibles) {
+      if (item.taken) continue;
+      if (distance(player.x, player.y, item.x, item.y) < 34) {
+        item.taken = true;
+        player.cash += COLLECTIBLES.pickupCash;
+        const got = state.collectibles.filter((c) => c.taken).length;
+        if (got >= COLLECTIBLES.count) {
+          player.cash += COLLECTIBLES.allBonus;
+          addToast(state, `All ${COLLECTIBLES.count} sun packages — +$${COLLECTIBLES.allBonus} bonus!`);
+        } else {
+          addToast(state, `Sun package ${got} of ${COLLECTIBLES.count} — +$${COLLECTIBLES.pickupCash}`);
+        }
+        return EVENT_COLLECT;
+      }
+    }
+    return 0;
+  }
+
   function updatePickups() {
     const player = state.player;
     for (const pickup of state.pickups) {
@@ -292,7 +347,10 @@ export function createWorld(random) {
       if (state.decayTimer >= WANTED.decaySeconds) {
         state.decayTimer = 0;
         state.wanted = Math.max(0, state.wanted - 1);
-        if (state.wanted === 0) addToast(state, 'You lost the cops');
+        if (state.wanted === 0) {
+          state.roadblock = null;
+          addToast(state, 'You lost the cops');
+        }
       }
     } else {
       state.decayTimer = 0;
@@ -325,6 +383,24 @@ export function createWorld(random) {
   function step(dt, controls, actions) {
     let events = 0;
     state.time += dt;
+    // The day turns: four minutes from noon to noon, with a night in the middle.
+    const wasNight = state.night;
+    state.dayTime += dt;
+    const phase = (state.dayTime / DAY.cycleSeconds) % 1;
+    state.night = phase >= DAY.nightStart && phase < DAY.nightEnd;
+    if (state.night !== wasNight) {
+      addToast(state, state.night ? 'Night falls on Solmar — taxi fares pay double' : 'Dawn over Solmar');
+    }
+    // The horn (H): a honk, and nearby pedestrians get out of the way.
+    if (actions & ACTION_HORN) {
+      events |= EVENT_HORN;
+      for (const ped of state.peds) {
+        if (ped.state === 'walk' && distance(ped.x, ped.y, state.player.x, state.player.y) < 200) {
+          ped.state = 'flee';
+          ped.fleeTimer = 1.5;
+        }
+      }
+    }
     events |= updateMission(state, dt);
     const player = state.player;
     if (player.onFoot) events |= updatePlayerOnFoot(dt, controls, actions);
@@ -334,7 +410,11 @@ export function createWorld(random) {
     events |= updatePolice(state, dt);
     events |= updateBullets(state, dt);
     events |= updatePickups();
+    events |= updateCollectibles();
     events |= updateTaxi(state, dt) ? EVENT_FARE : 0;
+    const raceEvent = updateRace(state, dt);
+    if (raceEvent > 0) events |= EVENT_RACE;
+    if (maybeRoadblock(state)) addToast(state, 'Roadblock ahead — five stars means the whole force');
     state.garageNear = player.onFoot && distance(player.x, player.y, GARAGE.x, GARAGE.y) < 120;
     updateWanted(dt);
     updateParticles(dt);

@@ -6,6 +6,11 @@ const MUSIC_STEPS = [
   [110, 220], [0, 0], [130.8, 261.6], [0, 0], [98, 196], [0, 0], [146.8, 293.7], [0, 0],
   [110, 220], [0, 0], [130.8, 261.6], [0, 0], [164.8, 329.6], [146.8, 293.7], [130.8, 261.6], [0, 0],
 ];
+/** The same loop in a minor key, for driving Solmar after dark. */
+const MUSIC_STEPS_NIGHT = [
+  [110, 220], [0, 0], [103.8, 207.7], [0, 0], [98, 196], [0, 0], [116.5, 233.1], [0, 0],
+  [110, 220], [0, 0], [103.8, 207.7], [0, 0], [123.5, 246.9], [116.5, 233.1], [103.8, 207.7], [0, 0],
+];
 const STEP_SECONDS = 0.22;
 
 export function createAudio() {
@@ -21,6 +26,7 @@ export function createAudio() {
   let musicTimer = null;
   let musicStep = 0;
   let musicOn = false;
+  let nightMode = false;
 
   function unlock() {
     if (context) {
@@ -94,7 +100,8 @@ export function createAudio() {
 
   function playMusicStep() {
     if (!context || !musicOn) return;
-    const [bass, pluck] = MUSIC_STEPS[musicStep % MUSIC_STEPS.length];
+    const steps = nightMode ? MUSIC_STEPS_NIGHT : MUSIC_STEPS;
+    const [bass, pluck] = steps[musicStep % steps.length];
     if (bass) tone(bass, 0.2, 'triangle', 0.11);
     if (pluck) tone(pluck, 0.16, 'sine', 0.05);
     musicStep += 1;
@@ -115,6 +122,12 @@ export function createAudio() {
         window.clearInterval(musicTimer);
         musicTimer = null;
       }
+    },
+    /** Swap the music loop to the night variant (or back) as the day turns. */
+    setNight(on) {
+      if (on === nightMode) return;
+      nightMode = on;
+      musicStep = 0;
     },
     /** Continuous engine hum: speed in px/s, 0 while on foot. */
     engine(speed) {
@@ -166,6 +179,24 @@ export function createAudio() {
     },
     click() {
       tone(660, 0.06, 'sine', 0.12);
+    },
+    /** Two-tone car horn: a short honk that clears pedestrians out of the way. */
+    horn() {
+      tone(370, 0.22, 'square', 0.1);
+      tone(466, 0.22, 'square', 0.08);
+    },
+    /** One race countdown beep; the third call is the higher go-beep. */
+    countdown(last) {
+      tone(last ? 1046 : 659, last ? 0.22 : 0.12, 'sine', 0.16);
+    },
+    /** A bright chime for a sun package collected, higher than a pickup. */
+    collect() {
+      tone(1318, 0.09, 'sine', 0.14);
+      window.setTimeout(() => tone(1760, 0.14, 'sine', 0.14), 70);
+    },
+    /** Tyre squeal on a hard handbrake turn. */
+    screech() {
+      tone(1400, 0.18, 'sawtooth', 0.04, 700);
     },
     crash() {
       noiseBurst(0.2, 0.25);

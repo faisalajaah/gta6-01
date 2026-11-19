@@ -1,7 +1,7 @@
 // Missions and the story of Solmar: Marco Solano, a getaway driver back in town, takes jobs
 // from Lena Cruz, a fixer who pays in cash. Each mission is steps with a target on the map;
-// finishing one pays out and starts the next, and finishing all six makes Marco king of Solmar.
-import { GARAGE, HOTEL, MARINA, MISSIONS } from './config.js';
+// finishing one pays out and starts the next, and finishing all nine makes Marco king of Solmar.
+import { BANK, GARAGE, HOTEL, MARINA, MISSIONS, RACE_START, SAFEHOUSE, TOWER } from './config.js';
 import { distance } from './geometry.js';
 import { addWanted } from './police.js';
 
@@ -41,6 +41,15 @@ export function missionText(state) {
   if (mission.index === 5) {
     return `Tower Run — checkpoint ${mission.step + 1} of 3 · ${Math.ceil(mission.timer)}s left`;
   }
+  if (mission.index === 6) {
+    return mission.step === 0 ? 'Hit the Bank — then run' : `The Getaway — reach the safehouse · ${Math.ceil(mission.timer)}s left`;
+  }
+  if (mission.index === 7) {
+    return state.race.active ? 'Street King — beat the rival to the last checkpoint' : 'Street King — stop at the start line by the stadium to race';
+  }
+  if (mission.index === 8) {
+    return mission.step === 0 ? 'The Last Job — rob the Bank, one final score' : `The Last Job — escape to the Tower · ${Math.ceil(mission.timer)}s left`;
+  }
   return def.title;
 }
 
@@ -74,6 +83,16 @@ export function startMission(state, index) {
     mission.timer = 75;
     addWanted(state, 1);
     addToast(state, 'Mission: Tower Run — three checkpoints, 75 seconds');
+  } else if (index === 6) {
+    mission.target = BANK;
+    addToast(state, 'Mission: The Getaway — hit the Bank, lose the heat at the safehouse');
+  } else if (index === 7) {
+    mission.target = RACE_START;
+    state.race.result = null;
+    addToast(state, 'Mission: Street King — beat the rival in a street race');
+  } else if (index === 8) {
+    mission.target = BANK;
+    addToast(state, 'Mission: The Last Job — the Bank, then the Tower, five stars');
   }
 }
 
@@ -142,6 +161,7 @@ export function updateMission(state, dt) {
     mission.timer -= dt;
     if (mission.timer <= 0) {
       state.wanted = 0;
+      state.roadblock = null;
       for (let index = state.cars.length - 1; index >= 0; index -= 1) {
         if (state.cars[index].kind === 'police') state.cars.splice(index, 1);
       }
@@ -184,6 +204,45 @@ export function updateMission(state, dt) {
       addToast(state, `Checkpoint ${mission.step} — next one up`);
     }
     if (mission.timer <= 0) return failMission(state, 'Out of time — the Tower Run restarts');
+    return 0;
+  }
+  if (mission.index === 6) {
+    if (mission.step === 0 && distance(player.x, player.y, BANK.x, BANK.y) < REACH_DISTANCE) {
+      mission.step = 1;
+      mission.target = SAFEHOUSE;
+      mission.timer = 60;
+      addWanted(state, 4);
+      addToast(state, 'Bank hit — four stars, 60 seconds to the safehouse');
+    } else if (mission.step === 1) {
+      mission.timer -= dt;
+      if (distance(player.x, player.y, SAFEHOUSE.x, SAFEHOUSE.y) < REACH_DISTANCE) {
+        return completeMission(state);
+      }
+      if (mission.timer <= 0) return failMission(state, 'Too slow — the safehouse went cold');
+    }
+    return 0;
+  }
+  if (mission.index === 7) {
+    // The race starts itself when the player pulls up to the line and stops; the race
+    // module reports the result, and the mission just waits for it.
+    if (state.race.result === 'win') return completeMission(state);
+    if (state.race.result === 'loss') return failMission(state, 'The rival beat you — rematch');
+    return 0;
+  }
+  if (mission.index === 8) {
+    if (mission.step === 0 && distance(player.x, player.y, BANK.x, BANK.y) < REACH_DISTANCE) {
+      mission.step = 1;
+      mission.target = TOWER;
+      mission.timer = 90;
+      addWanted(state, 5);
+      addToast(state, 'The bank is empty — five stars, 90 seconds to the Tower');
+    } else if (mission.step === 1) {
+      mission.timer -= dt;
+      if (distance(player.x, player.y, TOWER.x, TOWER.y) < REACH_DISTANCE) {
+        return completeMission(state);
+      }
+      if (mission.timer <= 0) return failMission(state, 'Out of time — the Last Job restarts');
+    }
     return 0;
   }
   return 0;

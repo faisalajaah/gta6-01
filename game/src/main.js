@@ -2,11 +2,11 @@
 // (several in a slow frame, none in a fast one), and the renderer paints what is there. The game
 // moves between four screens: title, play, paused and game over.
 //
-// ?seed=N fixes the city. ?shot=start|play|chase|end (with &seed=N) stages that scene instead
-// of running the loop, paints it twice and sets window.__shotReady for a screenshot.
-import { MISSIONS, SAVE_KEY, STEP } from './config.js';
+// ?seed=N fixes the city. ?shot=heist|race|stadium|garage (with &seed=N) stages that scene
+// instead of running the loop, paints it twice and sets window.__shotReady for a screenshot.
+import { MISSIONS, SAVE_KEY, STEP, VIEW } from './config.js';
 import { createRandom } from './random.js';
-import { createWorld, EVENT_CRASH, EVENT_FARE, EVENT_HIT, EVENT_MISSION, EVENT_OVER, EVENT_PICKUP, EVENT_PUNCH, EVENT_SHOT } from './world.js';
+import { createWorld, EVENT_COLLECT, EVENT_CRASH, EVENT_FARE, EVENT_HIT, EVENT_HORN, EVENT_MISSION, EVENT_OVER, EVENT_PICKUP, EVENT_PUNCH, EVENT_RACE, EVENT_SHOT } from './world.js';
 import { ACTION_CONFIRM, ACTION_MISSION, ACTION_PAUSE, createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { createRenderer, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
@@ -74,6 +74,8 @@ function runGame() {
   let save = readSave();
   let accumulator = 0;
   let last = performance.now();
+  /** Camera zoom: 1 at rest, easing out to 0.88 at top speed so fast driving sees more road. */
+  let zoom = 1;
 
   // Screen readers (and anyone watching the page's text) hear the screen changes.
   function announce(message) {
@@ -177,7 +179,18 @@ function runGame() {
     if (events & EVENT_PICKUP) audio.pickup();
     if (events & EVENT_FARE) audio.farePaid();
     if (events & EVENT_CRASH) audio.crash();
+    if (events & EVENT_HORN) audio.horn();
+    if (events & EVENT_COLLECT) audio.collect();
+    if (events & EVENT_RACE) {
+      const race = world.state.race;
+      if (race.result === 'win') audio.missionDone();
+      else if (race.result === 'loss') audio.busted();
+      else audio.countdown(race.countdown <= 0);
+    }
     if (events & EVENT_OVER) endGame();
+    const playerCar = world.state.player.car;
+    if (playerCar && playerCar.skidding) audio.screech();
+    audio.setNight(world.state.night);
     audio.engine(world.state.player.onFoot ? 0 : Math.abs(world.state.player.speed));
     audio.siren(policeNear(world.state), STEP);
   }
@@ -207,6 +220,14 @@ function runGame() {
     } else {
       accumulator = 0;
     }
+    // Speed zoom: pull the camera back a little as the car goes faster.
+    const speed = world.state.player.onFoot ? 0 : Math.abs(world.state.player.speed || 0);
+    const zoomTarget = 1 - Math.min(0.12, (speed / 600) * 0.12);
+    zoom += (zoomTarget - zoom) * 0.08;
+    const baseScale = Math.min(canvas.width / VIEW.width, canvas.height / VIEW.height);
+    renderer.view.scale = baseScale * zoom;
+    renderer.view.x = (canvas.width - VIEW.width * renderer.view.scale) / 2;
+    renderer.view.y = (canvas.height - VIEW.height * renderer.view.scale) / 2;
     renderer.draw(world.state, screen, save);
   }
 

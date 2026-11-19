@@ -2,8 +2,9 @@
 // scaled to fit the window and centred, the margin filled with the backdrop colour. The camera
 // follows the player through Solmar: roads and lane paint, pastel blocks with long afternoon
 // shadows, the park, the beach and the sea, then the cars, the people and the HUD.
-import { CAR, GARAGE, MISSIONS, PALETTE, PARK, PLAYER, ROADS_X, ROADS_Y, ROAD_W, VIEW, WORLD } from './config.js';
+import { CAR, GARAGE, MISSIONS, PALETTE, PARK, PLAYER, RACE_START, ROADS_X, ROADS_Y, ROAD_W, STADIUM, VIEW, WORLD } from './config.js';
 import { createText, drawHud } from './hud.js';
+import { RACE_CHECKPOINTS } from './race.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -105,6 +106,25 @@ export function createRenderer(canvas) {
     context.fillStyle = '#c9bfa9';
     context.fillRect(PARK.x + PARK.w / 2 - 8, PARK.y, 16, PARK.h);
     context.fillRect(PARK.x, PARK.y + PARK.h / 2 - 8, PARK.w, 16);
+    // The stadium: a green field, an oval running track and its name on the grass.
+    context.fillStyle = '#6d9c4e';
+    context.fillRect(STADIUM.x, STADIUM.y, STADIUM.w, STADIUM.h);
+    context.strokeStyle = '#c96f4a';
+    context.lineWidth = 14;
+    context.beginPath();
+    context.ellipse(STADIUM.x + STADIUM.w / 2, STADIUM.y + STADIUM.h / 2, 120, 90, 0, 0, Math.PI * 2);
+    context.stroke();
+    context.fillStyle = '#5a8a3e';
+    context.beginPath();
+    context.ellipse(STADIUM.x + STADIUM.w / 2, STADIUM.y + STADIUM.h / 2, 96, 66, 0, 0, Math.PI * 2);
+    context.fill();
+    text('STADIUM', STADIUM.x + STADIUM.w / 2, STADIUM.y + STADIUM.h / 2 + 6, 22, 'rgba(245, 239, 224, 0.9)', 'center');
+    // The Old Town pier: wooden boards reaching into the sea at the west end of the beach.
+    context.fillStyle = '#8a6f4d';
+    context.fillRect(160, WORLD.seaY - 40, 80, 130);
+    context.fillStyle = '#a0805a';
+    for (let y = WORLD.seaY - 40; y < WORLD.seaY + 80; y += 16) context.fillRect(160, y, 80, 4);
+    text('OLD TOWN', 200, WORLD.seaY - 52, 13, 'rgba(90, 70, 40, 0.6)', 'center');
   }
 
   function drawRoads() {
@@ -151,10 +171,11 @@ export function createRenderer(canvas) {
       context.fillRect(building.x + 18, building.y + 18, 26, 18);
       context.fillRect(building.x + building.w - 44, building.y + building.h - 36, 26, 18);
       // Downtown towers (around Solmar Tower) read taller: lit window grids on the face.
+      // At night every window in the city lights up.
       const downtown = building.x + building.w / 2 > 900 && building.x + building.w / 2 < 1900
         && building.y + building.h / 2 > 500 && building.y + building.h / 2 < 1100;
-      if (downtown) {
-        context.fillStyle = 'rgba(255, 240, 180, 0.75)';
+      if (downtown || state.night) {
+        context.fillStyle = state.night ? 'rgba(255, 214, 120, 0.9)' : 'rgba(255, 240, 180, 0.75)';
         for (let wx = building.x + 22; wx < building.x + building.w - 18; wx += 26) {
           for (let wy = building.y + 22; wy < building.y + building.h - 18; wy += 26) {
             context.fillRect(wx, wy, 10, 12);
@@ -185,25 +206,45 @@ export function createRenderer(canvas) {
   function drawCar(state, car) {
     if (!inView(state, car.x, car.y, 60)) return;
     const flashing = Math.floor(state.time * 4) % 2 === 0;
+    const len = car.length || CAR.length;
+    const half = len / 2;
     context.save();
     context.translate(car.x, car.y);
     context.rotate(car.angle);
     context.fillStyle = 'rgba(20, 16, 10, 0.3)';
-    context.fillRect(-CAR.length / 2 + 4, -CAR.width / 2 + 5, CAR.length, CAR.width);
+    context.fillRect(-half + 4, -CAR.width / 2 + 5, len, CAR.width);
     if (car.kind === 'police') {
       context.fillStyle = '#f5f5f5';
-      context.fillRect(-CAR.length / 2, -CAR.width / 2, CAR.length, CAR.width);
+      context.fillRect(-half, -CAR.width / 2, len, CAR.width);
       context.fillStyle = '#222222';
       context.fillRect(-6, -CAR.width / 2, 12, CAR.width);
     } else {
       context.fillStyle = car.color;
-      context.fillRect(-CAR.length / 2, -CAR.width / 2, CAR.length, CAR.width);
+      context.fillRect(-half, -CAR.width / 2, len, CAR.width);
     }
+    // Windshield and rear window; a bus shows three windows down its side.
     context.fillStyle = 'rgba(30, 40, 55, 0.85)';
-    context.fillRect(-6, -CAR.width / 2 + 4, 14, CAR.width - 8);
+    context.fillRect(2, -CAR.width / 2 + 4, 12, CAR.width - 8);
+    if (car.bus) {
+      context.fillRect(-half + 8, -CAR.width / 2 + 4, 12, CAR.width - 8);
+      context.fillRect(-14, -CAR.width / 2 + 4, 12, CAR.width - 8);
+    }
+    // Headlights at the front.
     context.fillStyle = 'rgba(245, 239, 224, 0.9)';
-    context.fillRect(CAR.length / 2 - 4, -CAR.width / 2 + 3, 3, 5);
-    context.fillRect(CAR.length / 2 - 4, CAR.width / 2 - 8, 3, 5);
+    context.fillRect(half - 4, -CAR.width / 2 + 3, 3, 5);
+    context.fillRect(half - 4, CAR.width / 2 - 8, 3, 5);
+    // Brake lights glow red while the driver is braking.
+    if (car.braking) {
+      context.fillStyle = '#ff3b30';
+      context.fillRect(-half + 1, -CAR.width / 2 + 3, 3, 5);
+      context.fillRect(-half + 1, CAR.width / 2 - 8, 3, 5);
+    }
+    // Four wheels at the corners.
+    context.fillStyle = '#1a1a1a';
+    context.fillRect(-half + 6, -CAR.width / 2 - 2, 10, 4);
+    context.fillRect(-half + 6, CAR.width / 2 - 2, 10, 4);
+    context.fillRect(half - 16, -CAR.width / 2 - 2, 10, 4);
+    context.fillRect(half - 16, CAR.width / 2 - 2, 10, 4);
     if (car.kind === 'police') {
       context.fillStyle = flashing ? '#ff3b30' : '#3b82ff';
       context.fillRect(-4, -CAR.width / 2 - 2, 8, 5);
@@ -212,19 +253,44 @@ export function createRenderer(canvas) {
     }
     if (car.kind === 'player') {
       context.fillStyle = PALETTE.gold;
-      context.fillRect(-CAR.length / 2 + 4, -2, CAR.length - 8, 4);
+      context.fillRect(-half + 4, -2, len - 8, 4);
     }
     context.restore();
+    // A rival driver gets a name tag so the race reads at a glance.
+    if (car.kind === 'rival') text('RIVAL', car.x, car.y - 26, 13, '#c77ddb', 'center');
     if (car.kind === 'player' && car.health < 40) {
       context.fillStyle = 'rgba(120, 120, 120, 0.5)';
       context.beginPath();
       context.arc(car.x - 10, car.y - 8, 6 + Math.sin(state.time * 9) * 2, 0, Math.PI * 2);
       context.fill();
     }
+    // A disabled cruiser smokes where it died.
+    if (car.disabled) {
+      context.fillStyle = 'rgba(120, 120, 120, 0.55)';
+      context.beginPath();
+      context.arc(car.x - 6 + Math.sin(state.time * 7) * 3, car.y - 10, 7 + Math.sin(state.time * 9) * 2, 0, Math.PI * 2);
+      context.fill();
+    }
+    // Headlight beams at night, for the player, the police and the rival.
+    if (state.night && (car.kind === 'player' || car.kind === 'police' || car.kind === 'rival')) {
+      const angle = car.angle;
+      const fx = car.x + Math.cos(angle) * half;
+      const fy = car.y + Math.sin(angle) * half;
+      const tipX = fx + Math.cos(angle) * 90;
+      const tipY = fy + Math.sin(angle) * 90;
+      context.fillStyle = 'rgba(255, 240, 180, 0.10)';
+      context.beginPath();
+      context.moveTo(fx, fy);
+      context.lineTo(tipX + Math.cos(angle + Math.PI / 2) * 26, tipY + Math.sin(angle + Math.PI / 2) * 26);
+      context.lineTo(tipX + Math.cos(angle - Math.PI / 2) * 26, tipY + Math.sin(angle - Math.PI / 2) * 26);
+      context.closePath();
+      context.fill();
+    }
   }
 
   function drawPed(state, ped) {
     if (!inView(state, ped.x, ped.y, 30)) return;
+    const size = ped.size || 1;
     if (ped.fare) {
       context.strokeStyle = PALETTE.gold;
       context.lineWidth = 2;
@@ -235,21 +301,21 @@ export function createRenderer(canvas) {
     if (ped.state === 'down') {
       context.fillStyle = ped.color;
       context.beginPath();
-      context.ellipse(ped.x, ped.y, 11, 6, ped.angle, 0, Math.PI * 2);
+      context.ellipse(ped.x, ped.y, 11 * size, 6 * size, ped.angle, 0, Math.PI * 2);
       context.fill();
       return;
     }
     context.fillStyle = 'rgba(20, 16, 10, 0.3)';
     context.beginPath();
-    context.ellipse(ped.x + 3, ped.y + 4, 9, 6, 0, 0, Math.PI * 2);
+    context.ellipse(ped.x + 3, ped.y + 4, 9 * size, 6 * size, 0, 0, Math.PI * 2);
     context.fill();
     context.fillStyle = ped.color;
     context.beginPath();
-    context.arc(ped.x, ped.y, 8, 0, Math.PI * 2);
+    context.arc(ped.x, ped.y, 8 * size, 0, Math.PI * 2);
     context.fill();
     context.fillStyle = '#e8b98a';
     context.beginPath();
-    context.arc(ped.x, ped.y, 4, 0, Math.PI * 2);
+    context.arc(ped.x, ped.y, 4 * size, 0, Math.PI * 2);
     context.fill();
   }
 
@@ -340,12 +406,87 @@ export function createRenderer(canvas) {
     text('GARAGE', GARAGE.x, GARAGE.y - 40, 16, PALETTE.gold, 'center');
   }
 
+  /** The sun packages: pulsing gold stars the player can spot from the road. */
+  function drawCollectibles(state) {
+    for (const item of state.collectibles || []) {
+      if (item.taken || !inView(state, item.x, item.y, 30)) continue;
+      const pulse = 1 + Math.sin(state.time * 5 + item.x) * 0.15;
+      context.strokeStyle = PALETTE.gold;
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(item.x, item.y, 14 * pulse, 0, Math.PI * 2);
+      context.stroke();
+      text('★', item.x, item.y + 7, 18, PALETTE.gold, 'center');
+    }
+  }
+
+  /** The race start line, always visible, and the checkpoints while a race is on. */
+  function drawRaceMarkers(state) {
+    const race = state.race;
+    const sx = RACE_START.x;
+    const sy = RACE_START.y;
+    if (inView(state, sx, sy, 60)) {
+      for (let index = 0; index < 6; index += 1) {
+        context.fillStyle = index % 2 === 0 ? '#f5f5f5' : '#222222';
+        context.fillRect(sx - 8, sy - 30 + index * 10, 16, 10);
+      }
+      text('START', sx, sy - 40, 13, PALETTE.gold, 'center');
+    }
+    if (!race || !race.active) return;
+    for (let index = race.index; index < RACE_CHECKPOINTS.length; index += 1) {
+      const point = RACE_CHECKPOINTS[index];
+      if (!inView(state, point.x, point.y, 60)) continue;
+      const current = index === race.index;
+      const pulse = 1 + Math.sin(state.time * 5) * 0.12;
+      context.strokeStyle = current ? PALETTE.gold : 'rgba(242, 201, 76, 0.5)';
+      context.lineWidth = current ? 4 : 2;
+      context.beginPath();
+      context.arc(point.x, point.y, 30 * pulse, 0, Math.PI * 2);
+      context.stroke();
+      text(String(index + 1), point.x, point.y + 6, 18, current ? PALETTE.gold : 'rgba(245, 239, 224, 0.7)', 'center');
+    }
+  }
+
+  /** A five-star roadblock: striped bars on the parked cruisers, and a warning label. */
+  function drawRoadblock(state) {
+    const block = state.roadblock;
+    if (!block || !inView(state, block.x, block.y, 80)) return;
+    for (const car of block.cars) {
+      if (!inView(state, car.x, car.y, 40)) continue;
+      context.save();
+      context.translate(car.x, car.y);
+      context.rotate(car.angle);
+      for (let index = 0; index < 6; index += 1) {
+        context.fillStyle = index % 2 === 0 ? '#ff3b30' : '#f5f5f5';
+        context.fillRect(-30 + index * 10, -3, 10, 6);
+      }
+      context.restore();
+    }
+    text('ROADBLOCK', block.x, block.y - 46, 15, PALETTE.red, 'center');
+  }
+
   function drawWorld(state) {
     context.save();
     context.translate(VIEW.width / 2 - state.camera.x, VIEW.height / 2 - state.camera.y);
     drawGround(state);
     drawRoads();
     drawBuildings(state);
+    // Streetlight pools at every intersection after dark.
+    if (state.night) {
+      for (const roadX of ROADS_X) {
+        for (const roadY of ROADS_Y) {
+          if (!inView(state, roadX, roadY, 80)) continue;
+          context.fillStyle = 'rgba(255, 214, 120, 0.08)';
+          context.beginPath();
+          context.arc(roadX, roadY, 70, 0, Math.PI * 2);
+          context.fill();
+          context.fillStyle = 'rgba(255, 230, 160, 0.9)';
+          context.beginPath();
+          context.arc(roadX, roadY, 4, 0, Math.PI * 2);
+          context.fill();
+        }
+      }
+    }
     for (const pickup of state.pickups) {
       if (!pickup.active || !inView(state, pickup.x, pickup.y, 30)) continue;
       const bob = Math.sin(state.time * 4 + pickup.x) * 3;
@@ -357,10 +498,19 @@ export function createRenderer(canvas) {
     }
     drawMissionMarker(state);
     drawTaxiMarker(state);
+    drawCollectibles(state);
+    drawRaceMarkers(state);
+    drawRoadblock(state);
     for (const car of state.cars) drawCar(state, car);
     for (const ped of state.peds) drawPed(state, ped);
     drawPlayer(state);
     for (const bullet of state.bullets) {
+      context.strokeStyle = 'rgba(255, 230, 109, 0.8)';
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(bullet.px ?? bullet.x, bullet.py ?? bullet.y);
+      context.lineTo(bullet.x, bullet.y);
+      context.stroke();
       context.fillStyle = '#ffe66d';
       context.beginPath();
       context.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
@@ -375,18 +525,29 @@ export function createRenderer(canvas) {
     }
     context.globalAlpha = 1;
     context.restore();
-    // Golden afternoon light over everything, with a soft vignette.
-    const light = context.createLinearGradient(0, 0, 0, VIEW.height);
-    light.addColorStop(0, 'rgba(255, 190, 90, 0.10)');
-    light.addColorStop(0.6, 'rgba(255, 190, 90, 0.03)');
-    light.addColorStop(1, 'rgba(255, 150, 60, 0.08)');
-    context.fillStyle = light;
-    context.fillRect(0, 0, VIEW.width, VIEW.height);
-    const vignette = context.createRadialGradient(VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.45, VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.85);
-    vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    vignette.addColorStop(1, 'rgba(10, 8, 4, 0.22)');
-    context.fillStyle = vignette;
-    context.fillRect(0, 0, VIEW.width, VIEW.height);
+    if (state.night) {
+      // Night: a deep blue wash over the city, streetlights already glowing below.
+      context.fillStyle = 'rgba(10, 16, 40, 0.42)';
+      context.fillRect(0, 0, VIEW.width, VIEW.height);
+      const vignette = context.createRadialGradient(VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.45, VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.85);
+      vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vignette.addColorStop(1, 'rgba(4, 6, 16, 0.35)');
+      context.fillStyle = vignette;
+      context.fillRect(0, 0, VIEW.width, VIEW.height);
+    } else {
+      // Golden afternoon light over everything, with a soft vignette.
+      const light = context.createLinearGradient(0, 0, 0, VIEW.height);
+      light.addColorStop(0, 'rgba(255, 190, 90, 0.10)');
+      light.addColorStop(0.6, 'rgba(255, 190, 90, 0.03)');
+      light.addColorStop(1, 'rgba(255, 150, 60, 0.08)');
+      context.fillStyle = light;
+      context.fillRect(0, 0, VIEW.width, VIEW.height);
+      const vignette = context.createRadialGradient(VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.45, VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.85);
+      vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vignette.addColorStop(1, 'rgba(10, 8, 4, 0.22)');
+      context.fillStyle = vignette;
+      context.fillRect(0, 0, VIEW.width, VIEW.height);
+    }
   }
 
   function drawPanel(title, lines, prompt, accent) {
@@ -422,12 +583,15 @@ export function createRenderer(canvas) {
         '',
         'WASD move · Shift run · E enter or steal a car · F punch',
         'Mouse aim, click to shoot when armed · P pause · M mission · E taxi fare',
-        'Garage: R repair $150 · B sport car $800 · Taxi fares pay cash',
+        'Space handbrake · H horn · 9 missions · street races · 12 sun packages',
+        'Day turns to night — fares pay double after dark',
         '',
         `Saved: $${save.cash} · ${save.missions} of ${MISSIONS.length} missions done · Best cash $${save.bestCash}`,
       ];
       drawPanel('SOLMAR', lines, 'Press Enter or click to play', PALETTE.gold);
-      text('Streets of Sun — an open-world crime game', VIEW.width / 2, VIEW.height / 2 + 150, 20, PALETTE.text, 'center');
+      // The tagline sits below the panel, clear of the save line inside it.
+      const panelHeight = PANEL.top + lines.length * PANEL.line + PANEL.bottom;
+      text('Streets of Sun — an open-world crime game', VIEW.width / 2, VIEW.height / 2 + panelHeight / 2 + 28, 20, PALETTE.text, 'center');
       return;
     }
     drawHud(context, state, state.camera);

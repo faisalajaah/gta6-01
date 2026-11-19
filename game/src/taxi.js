@@ -2,7 +2,7 @@
 // the fare pays cash. Repeatable forever, so the city keeps paying after the story ends.
 // The fare waits on a sidewalk, gets in when Marco walks up and presses E, and the clock
 // runs until Marco drops them at the marked spot while driving.
-import { ROADS_X, ROADS_Y, TAXI, WORLD } from './config.js';
+import { BANK, HOTEL, MARINA, ROADS_X, ROADS_Y, STADIUM, TAXI, TOWER, WORLD } from './config.js';
 import { distance } from './geometry.js';
 import { addToast } from './missions.js';
 import { chance, pick } from './random.js';
@@ -15,8 +15,19 @@ export function createTaxiState() {
   return { waiting: null, dest: null, timer: 0, fare: 0, riding: false, cooldown: 0 };
 }
 
-/** A far-away road point for a drop-off, never too close to where the fare starts. */
+/** A far-away drop-off: a third of the time a landmark, otherwise a far road crossing. */
 function farDestination(state, fromX, fromY) {
+  if (chance(state.random, 0.35)) {
+    const spots = [
+      { name: 'the Bank', x: BANK.x, y: BANK.y },
+      { name: 'the Stadium', x: STADIUM.x, y: STADIUM.y },
+      { name: 'the Marina', x: MARINA.x, y: MARINA.y },
+      { name: 'the Palms Hotel', x: HOTEL.x, y: HOTEL.y },
+      { name: 'the Tower', x: TOWER.x, y: TOWER.y },
+    ];
+    const spot = pick(state.random, spots);
+    if (distance(fromX, fromY, spot.x, spot.y) > 600) return spot;
+  }
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const roadX = pick(state.random, ROADS_X);
     const roadY = pick(state.random, ROADS_Y);
@@ -77,10 +88,16 @@ export function startFare(state) {
   taxi.dest = farDestination(state, ped.x, ped.y);
   const metres = distance(ped.x, ped.y, taxi.dest.x, taxi.dest.y);
   taxi.fare = Math.round(TAXI.baseFare + metres * TAXI.perMetre);
+  // Night fares pay double: fewer cabs out after dark in Solmar.
+  if (state.night) {
+    taxi.fare *= 2;
+    addToast(state, `Night fare — double rate, drop them off for $${taxi.fare}`);
+  } else {
+    addToast(state, `Taxi fare — drop them off for $${taxi.fare}`);
+  }
   taxi.timer = Math.max(TAXI.minTime, metres * TAXI.secondsPerMetre);
   taxi.riding = true;
   taxi.waiting = null;
-  addToast(state, `Taxi fare — drop them off for $${taxi.fare}`);
   return true;
 }
 

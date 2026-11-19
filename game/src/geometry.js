@@ -6,6 +6,17 @@ export function clamp(value, min, max) {
   return value < min ? min : value > max ? max : value;
 }
 
+/** Linear interpolation: `lerp(0, 10, 0.25)` is 2.5. */
+export function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+/** Smoothstep: 0 below `edge0`, 1 above `edge1`, eased between them. */
+export function smoothstep(edge0, edge1, x) {
+  const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
 export function distance(x1, y1, x2, y2) {
   return Math.hypot(x2 - x1, y2 - y1);
 }
